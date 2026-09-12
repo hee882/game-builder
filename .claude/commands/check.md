@@ -7,13 +7,12 @@ allowed-tools: Bash, Read, Edit
 
 ## 1단계: 검증 명령 실행
 
-> **TODO**: 스택 확정 후 아래를 실제 명령으로 교체할 것.
-> 가이드: `docs/stack-guide.md`
+Node.js 22.18 이상 또는 24에서 실행합니다.
 
 ```bash
-# <pm> run lint
-# <pm> run build
-# <pm> run test
+npm run check
+npm run build
+npm test
 ```
 
 스택이 아직 미정이면 `package.json`의 `scripts`를 읽어 존재하는 것만 실행한다.
