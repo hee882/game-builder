@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">플레이룸</string>
+    <string name="title_activity_main">플레이룸</string>
+    <string name="package_name">com.gamebuilder.playroom</string>
+    <string name="custom_url_scheme">com.gamebuilder.playroom</string>
+</resources>
