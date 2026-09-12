@@ -7,12 +7,27 @@ const portraitSlots=[{x:83,y:178},{x:218,y:92},{x:91,y:333},{x:211,y:247},{x:322
 const portraitRoad=[{x:-20,y:106},{x:126,y:106},{x:162,y:183},{x:274,y:183},{x:271,y:301},{x:165,y:301},{x:176,y:400},{x:440,y:400}];
 export class MobileRenderer extends WorldRenderer {
  height=460;
+ displayScale=1;
+ // Canvas is scaled to the available phone space; keep labels at least 12 CSS px.
+ override text(label:string,x:number,y:number,size=14,_color='#fff',align:CanvasTextAlign='left',bold=false){
+  const c=this.c,transform=c.getTransform();
+  const scale=Math.max(.1,this.displayScale*Math.hypot(transform.c,transform.d));
+  const readableSize=Math.max(size,(size>=14?14:12)/scale);
+  c.save();
+  c.font=`${bold?'700':'500'} ${readableSize}px "IBM Plex Sans KR", sans-serif`;
+  const width=c.measureText(label).width;
+  const left=align==='center'?x-width/2:align==='right'?x-width:x;
+  c.fillStyle='#17373f';
+  c.fillRect(left-3,y-readableSize,width+6,readableSize*1.3);
+  c.fillStyle='#f4db9d';c.textAlign=align;c.fillText(label,x,y);
+  c.restore();
+ }
  y(n:number){return 25+n/460*(this.height-40);}
  point(p:Point){return {x:p.x,y:this.y(p.y)};}
  pathPoint(progress:number){const lengths=portraitRoad.slice(1).map((p,i)=>Math.hypot(p.x-portraitRoad[i].x,p.y-portraitRoad[i].y));let n=progress/roadLength*lengths.reduce((a,b)=>a+b,0);for(let i=1;i<portraitRoad.length;i++){if(n<=lengths[i-1])return this.point({x:portraitRoad[i-1].x+(portraitRoad[i].x-portraitRoad[i-1].x)*n/lengths[i-1],y:portraitRoad[i-1].y+(portraitRoad[i].y-portraitRoad[i-1].y)*n/lengths[i-1]});n-=lengths[i-1];}return this.point(portraitRoad.at(-1)!);}
  mapHunt(p:Point){return {x:22+p.x/960*376,y:35+(p.y-90)/490*(this.height-65)};}
  mapPoint(p:Point,s:ArcadeRun){if(s.mode==='hunt')return this.mapHunt(p);if(s.mode==='landlord')return {x:45+p.x/960*350,y:this.height-38-(535-p.y)/88*Math.min(76,(this.height-68)/4)};const index=slots.findIndex(t=>Math.hypot(t.x-p.x,t.y-p.y)<75);if(index>=0)return this.point(portraitSlots[index]);const enemy=s.enemies.reduce<null|typeof s.enemies[number]>((best,e)=>!best||Math.hypot(e.x-p.x,e.y-p.y)<Math.hypot(best.x-p.x,best.y-p.y)?e:best,null);return enemy?this.pathPoint(enemy.progress):{x:210,y:this.height/2};}
- input(p:Point,s:ArcadeRun):Point|null{if(s.mode==='defense'){const i=portraitSlots.findIndex(t=>Math.hypot(t.x-p.x,this.y(t.y)-p.y)<34);return i>=0?slots[i]:null;}if(s.mode==='hunt')return {x:(p.x-22)/376*960,y:90+(p.y-35)/(this.height-65)*490};if(p.x<70||p.x>358)return null;const floor=Math.floor((this.height-38-p.y)/Math.min(76,(this.height-68)/4));return floor>=0&&floor<s.floors?{x:400,y:514-floor*88}:null;}
+ input(p:Point,s:ArcadeRun):Point|null{if(s.mode==='defense'){const radius=Math.max(34,22/this.displayScale);const targets=portraitSlots.map((t,i)=>({i,dx:t.x-p.x,dy:this.y(t.y)-p.y})).filter(t=>Math.abs(t.dx)<=radius&&Math.abs(t.dy)<=radius).sort((a,b)=>Math.hypot(a.dx,a.dy)-Math.hypot(b.dx,b.dy));return targets.length?slots[targets[0].i]:null;}if(s.mode==='hunt')return {x:(p.x-22)/376*960,y:90+(p.y-35)/(this.height-65)*490};if(p.x<70||p.x>358)return null;const floor=Math.floor((this.height-38-p.y)/Math.min(76,(this.height-68)/4));return floor>=0&&floor<s.floors?{x:400,y:514-floor*88}:null;}
  override render(s:ArcadeRun){const c=this.c;c.clearRect(0,0,420,this.height);if(s.mode==='defense')this.defenseWorld(s);if(s.mode==='hunt')this.huntWorld(s);if(s.mode==='landlord')this.cafeWorld(s);
   for(const shot of s.shots){const a=this.mapPoint(shot.from,s),b=this.mapPoint(shot.to,s);c.globalAlpha=Math.min(1,shot.life*6);this.line([a,b],shot.color,2);this.ellipse(b.x,b.y,4,4,shot.color);}c.globalAlpha=1;
   if(!this.reduced)for(const p of s.particles){const point=this.mapPoint(p,s);c.globalAlpha=Math.min(.8,p.life);this.ellipse(point.x+Math.sin(p.vx)*8,point.y+Math.cos(p.vy)*8,2,2,p.color);}c.globalAlpha=1;
