@@ -18,6 +18,7 @@ export type Enemy = Point & {
   kind: number;
   flash: number;
   chilledUntil?: number;
+  slowedUntil?: number;
 };
 export type Tower = Point & {
   kind: number;
@@ -39,6 +40,13 @@ export type Person = Point & {
   color: string;
   variant: number;
 };
+export const towerTypes = [
+  {id:'arrow',kind:0,action:0,name:'화살탑',symbol:'➶',color:'#ffe6a4',description:'빠른 단일 공격',cost:55,damage:16,cooldown:.6},
+  {id:'cannon',kind:1,action:1,name:'포격탑',symbol:'●',color:'#ffae78',description:'주변 65 거리의 적에게 피해 70%',cost:80,damage:30,cooldown:1.4},
+  {id:'frost',kind:2,action:2,name:'서리탑',symbol:'❄',color:'#9bebf0',description:'적 이동 속도 감소 · 빙결 파쇄 연계',cost:70,damage:11,cooldown:.85},
+  {id:'tremor',kind:3,action:4,name:'진동 말뚝',symbol:'≋',color:'#d3bc86',description:'90 거리 광역 타격 · 2초 동안 이동 속도 35% 감소',cost:95,damage:14,cooldown:1.6},
+  {id:'mirror',kind:4,action:5,name:'거울 첨탑',symbol:'◇',color:'#bda8f0',description:'투사체를 굴절해 140 거리의 다른 적 둘에게 피해 70%',cost:110,damage:20,cooldown:1.1}
+] as const;
 export const road: Point[] = [
   { x: -45, y: 225 },
   { x: 170, y: 225 },
@@ -122,6 +130,10 @@ export class GameState {
   attackRateMultiplier = 1;
   mobilityMultiplier = 1;
   elementalCombo = false;
+  enemyHealthMultiplier = 1;
+  enemySpeedMultiplier = 1;
+  chainDamage = 0;
+  healOnKill = 0;
   status = "";
   sound: (kind: "coin" | "hit" | "upgrade") => void = () => {};
   nextId = 0;
@@ -163,6 +175,7 @@ export class GameState {
     this.sound("coin");
   }
   spend(cost: number) {
+    if (!Number.isFinite(cost) || cost < 0) return false;
     if (this.money < cost) {
       this.status = `${cost - this.money}원이 더 필요해요.`;
       return false;
@@ -171,6 +184,30 @@ export class GameState {
     this.upgrades++;
     this.sound("upgrade");
     return true;
+  }
+  selectTower(kind: number) {
+    const tower = towerTypes.find(t => t.kind === kind);
+    if (this.mode !== 'defense' || !tower) return false;
+    this.selectedKind = kind;
+    this.status = `${tower.name} · ${tower.description} · ${tower.cost}원`;
+    return true;
+  }
+  damageEnemy(enemy: Enemy, amount: number, chain = true) {
+    if (enemy.hp <= 0) return;
+    enemy.hp -= amount;
+    enemy.flash = .15;
+    if (!chain || this.chainDamage <= 0) return;
+    const next = this.enemies.find(other => other !== enemy && other.hp > 0 && distance(enemy, other) <= 110);
+    if (next) {
+      this.damageEnemy(next, amount * this.chainDamage, false);
+      this.shots.push({from:{x:enemy.x,y:enemy.y},to:{x:next.x,y:next.y},life:.18,color:'#91bfff',kind:0});
+    }
+  }
+  recoverOnKill() {
+    if (this.health > 0 && this.healOnKill > 0) this.health = Math.min(20, this.health + this.healOnKill);
+  }
+  protected takeDamage(amount: number) {
+    this.health = Math.max(0, this.health - amount);
   }
   click(p: Point) {
     this.interactions++;
@@ -191,7 +228,9 @@ export class GameState {
           this.status = `타워 Lv.${tower.level} — 공격력과 사거리 증가!`;
         }
       } else {
-        const cost = [55, 80, 70][this.selectedKind];
+        const type = towerTypes.find(t => t.kind === this.selectedKind);
+        if (!type) return;
+        const cost = type.cost;
         if (this.spend(cost)) {
           this.towers.push({
             ...slots[index],
@@ -225,6 +264,7 @@ export class GameState {
     }
   }
   serve(c: Person, manual = false) {
+    if (c.phase !== 1) return;
     c.phase = 2;
     c.timer = 0;
     const value =
@@ -271,14 +311,11 @@ export class GameState {
   action(index: number) {
     this.interactions++;
     if (this.mode === "defense") {
-      if (index < 3) {
-        this.selectedKind = index;
-        this.status = [
-          "화살탑 · 빠른 단일 공격 · 55원",
-          "포격탑 · 주변 적까지 폭발 · 80원",
-          "서리탑 · 적 이동 속도 감소 · 70원",
-        ][index];
+      const type = towerTypes.find(t => t.action === index);
+      if (type) {
+        this.selectTower(type.kind);
       } else if (
+        index === 3 &&
         !this.enemies.length &&
         !this.remaining &&
         this.wave < 5 &&
@@ -363,7 +400,7 @@ export class GameState {
     this.spawnTimer -= dt;
     if (this.remaining > 0 && this.spawnTimer <= 0) {
       const boss = this.wave === 5 && this.remaining === 1;
-      const hp = boss ? 550 : 26 + this.wave * 16;
+      const hp = (boss ? 550 : 26 + this.wave * 16) * this.enemyHealthMultiplier;
       this.enemies.push({
         x: 0,
         y: 0,
@@ -371,7 +408,7 @@ export class GameState {
         hp,
         maxHp: hp,
         progress: 0,
-        speed: boss ? 32 : 40 + this.wave * 5,
+        speed: (boss ? 32 : 40 + this.wave * 5) * this.enemySpeedMultiplier,
         kind: boss ? 2 : this.remaining % 2,
         flash: 0,
       });
@@ -379,6 +416,8 @@ export class GameState {
       this.spawnTimer = 0.8;
     }
     for (const t of this.towers) {
+      const type = towerTypes.find(type => type.kind === t.kind);
+      if (!type) continue;
       t.cooldown -= dt;
       const e = this.enemies.find(
         (e) => distance(t, e) < 130 + t.level * 18 && e.hp > 0,
@@ -386,36 +425,49 @@ export class GameState {
       if (!e) continue;
       t.angle = Math.atan2(e.y - t.y, e.x - t.x);
       if (t.cooldown > 0) continue;
-      t.cooldown = [0.6, 1.4, 0.85][t.kind] / ((1 + t.level * 0.15) * this.attackRateMultiplier);
+      t.cooldown = type.cooldown / ((1 + t.level * 0.15) * this.attackRateMultiplier);
       const shatter = this.elementalCombo && t.kind === 1 && (e.chilledUntil ?? 0) > this.time;
-      const damage = [16, 30, 11][t.kind] * t.level * this.damageMultiplier * (shatter ? 1.5 : 1);
-      e.hp -= damage;
+      const damage = type.damage * t.level * this.damageMultiplier * (shatter ? 1.5 : 1);
+      this.damageEnemy(e, damage);
       e.flash = 0.15;
       if (t.kind === 1) {
         for (const other of this.enemies)
-          if (other !== e && distance(other, e) < 65) other.hp -= damage * 0.7;
+          if (other !== e && distance(other, e) < 65) this.damageEnemy(other, damage * 0.7);
         this.burst(e, "#ffb368", 8);
       }
       if (t.kind === 2) { e.speed = Math.max(20, e.speed * 0.86); e.chilledUntil = this.time + 3; }
+      if (t.kind === 3) {
+        for (const other of this.enemies) if (distance(other, e) <= 90) {
+          if (other !== e) this.damageEnemy(other, damage);
+          other.slowedUntil = this.time + 2;
+        }
+      }
+      if (t.kind === 4) {
+        for (const other of this.enemies.filter(other => other !== e && other.hp > 0 && distance(other,e) <= 140).slice(0,2)) {
+          this.damageEnemy(other, damage * .7);
+          this.shots.push({from:{x:e.x,y:e.y},to:{x:other.x,y:other.y},life:.18,color:type.color,kind:4});
+        }
+      }
       if (shatter) this.float(e, "빙결 파쇄 ×1.5", "#b6f3ed");
       this.shots.push({
         from: { x: t.x, y: t.y - 38 },
         to: { ...e },
         life: 0.18,
-        color: ["#ffe6a4", "#ffae78", "#9bebf0"][t.kind],
+        color: type.color,
         kind: t.kind,
       });
       this.sound("hit");
     }
     for (const e of this.enemies) {
       e.flash -= dt;
-      e.progress += e.speed * dt;
+      e.progress += e.speed * dt * ((e.slowedUntil ?? 0) > this.time ? .65 : 1);
       Object.assign(e, onRoad(e.progress));
       if (e.hp <= 0) {
         this.kills++;
+        this.recoverOnKill();
         this.gain(e.kind === 2 ? 100 : 12, e);
       } else if (e.progress >= roadLength) {
-        this.health = Math.max(0, this.health - (e.kind === 2 ? 5 : 1));
+        this.takeDamage(e.kind === 2 ? 5 : 1);
         this.burst({ x: 875, y: 370 }, "#f58279");
       }
     }
@@ -432,8 +484,8 @@ export class GameState {
     if (keys.x || keys.y) {
       const norm = Math.hypot(keys.x, keys.y);
       this.target = {
-        x: clamp(this.player.x + (keys.x / norm) * 180 * dt, 45, 915),
-        y: clamp(this.player.y + (keys.y / norm) * 180 * dt, 100, 570),
+        x: clamp(this.player.x + (keys.x / norm) * 180 * this.mobilityMultiplier * dt, 45, 915),
+        y: clamp(this.player.y + (keys.y / norm) * 180 * this.mobilityMultiplier * dt, 100, 570),
       };
     }
     const d = distance(this.player, this.target);
@@ -446,7 +498,7 @@ export class GameState {
     if (this.spawnTimer <= 0 && this.enemies.length < 22) {
       const a = Math.random() * Math.PI * 2;
       const boss = this.level >= 5 && !this.enemies.some((e) => e.kind === 2);
-      const hp = boss ? 700 : 22 + this.level * 10;
+      const hp = (boss ? 700 : 22 + this.level * 10) * this.enemyHealthMultiplier;
       this.enemies.push({
         id: this.nextId++,
         x: clamp(this.player.x + Math.cos(a) * 380, 20, 940),
@@ -454,20 +506,21 @@ export class GameState {
         hp,
         maxHp: hp,
         progress: 0,
-        speed: boss ? 22 : 27 + Math.random() * 18,
+        speed: (boss ? 22 : 27 + Math.random() * 18) * this.enemySpeedMultiplier,
         kind: boss ? 2 : this.nextId % 2,
         flash: 0,
       });
       this.spawnTimer = boss ? 2 : Math.max(0.45, 1.1 - this.level * 0.07);
     }
     for (const e of this.enemies) {
+      if (e.hp <= 0) continue;
       e.flash -= dt;
       const n = distance(e, this.player) || 1;
       e.x += ((this.player.x - e.x) / n) * e.speed * dt;
       e.y += ((this.player.y - e.y) / n) * e.speed * dt;
       e.progress -= dt;
       if (n < (e.kind === 2 ? 40 : 23) && e.progress <= 0) {
-        this.health = Math.max(0, this.health - (e.kind === 2 ? 3 : 1));
+        this.takeDamage(e.kind === 2 ? 3 : 1);
         e.progress = 1;
         this.float(this.player, "−1", "#ff968e");
         this.burst(this.player, "#ef9b98", 5);
@@ -475,11 +528,11 @@ export class GameState {
     }
     this.attackTimer -= dt;
     const targets = this.enemies
-      .filter((e) => distance(e, this.player) < 220)
+      .filter((e) => e.hp > 0 && distance(e, this.player) < 220)
       .sort((a, b) => distance(a, this.player) - distance(b, this.player));
     if (this.attackTimer <= 0 && targets.length) {
       for (const e of targets.slice(0, this.level >= 4 ? 3 : 1)) {
-        e.hp -= 23 * this.power * this.damageMultiplier;
+        this.damageEnemy(e, 23 * this.power * this.damageMultiplier);
         e.flash = 0.18;
         this.shots.push({
           from: { x: this.player.x, y: this.player.y - 20 },
@@ -496,6 +549,7 @@ export class GameState {
     for (const e of this.enemies)
       if (e.hp <= 0) {
         this.kills++;
+        this.recoverOnKill();
         this.gems.push({ x: e.x, y: e.y });
         this.burst(e, e.kind === 2 ? "#ffd775" : "#9dc5ff", 15);
         if (e.kind === 2) {
