@@ -1,4 +1,4 @@
-﻿import Phaser from "phaser";
+import Phaser from "phaser";
 import { GameState, type Mode } from "./game-state";
 import { WorldRenderer } from "./renderer";
 import "./style.css";
@@ -97,7 +97,7 @@ function tone(kind: "coin" | "hit" | "upgrade") {
 }
 for (const s of Object.values(states)) s.sound = tone;
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
-  <header class="site-header"><a class="brand" href="/" aria-label="플레이룸 홈"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>플레이룸<span class="brand-caption">SMALL WORLDS, BIG IDEAS</span></a><span class="edition"><span class="live-dot"></span> 직접 해보는 게임 비교실 <span class="mono">VOL. 01</span></span></header>
+  <header class="site-header"><a class="brand" href="./" aria-label="플레이룸 홈"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>플레이룸<span class="brand-caption">SMALL WORLDS, BIG IDEAS</span></a><span class="edition"><span class="live-dot"></span> 직접 해보는 게임 비교실 <span class="mono">VOL. 01</span></span></header>
   <main>
     <section class="intro"><div><p class="eyebrow">THREE WORLDS. YOUR KIND OF FUN.</p><h1>어떤 세계를 <span>만들고 싶나요?</span></h1><p class="intro-copy">직접 플레이하고, 성장한 모습을 보고, 마음이 가는 재미를 찾아보세요.</p></div><div class="intro-note"><span class="note-number">3</span><p>개의 작은 게임<br><strong>하나씩, 가볍게 플레이</strong></p></div></section>
     <nav class="game-tabs" aria-label="게임 선택"><button class="game-tab active" data-mode="defense" aria-pressed="true"><span class="tab-symbol">♜</span><span><small>전략 · 방어</small><strong>작은 성채</strong></span><span class="tab-arrow">↗</span></button><button class="game-tab" data-mode="hunt" aria-pressed="false"><span class="tab-symbol">✧</span><span><small>액션 · 수집</small><strong>유물 사냥꾼</strong></span><span class="tab-arrow">↗</span></button><button class="game-tab" data-mode="landlord" aria-pressed="false"><span class="tab-symbol">▥</span><span><small>경영 · 성장</small><strong>골목상회</strong></span><span class="tab-arrow">↗</span></button></nav>

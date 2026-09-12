@@ -37,6 +37,14 @@ npm run preview
 
 `check`는 TypeScript strict 검사, `test`는 `tests/*.test.mjs` 실행, `build`는 타입 검사 후 두 HTML 엔트리를 `dist/`에 생성합니다. `preview`는 빌드 결과를 제공하며 접속 주소는 터미널에 표시됩니다. 두 엔트리가 Phaser 청크를 공유합니다. Phaser 엔진 자체가 약 1.21MB(압축 전)이므로 Vite의 청크 경고 기준을 1,300kB로 설정했습니다. 이는 다운로드 크기를 줄이는 최적화가 아니라 알려진 엔진 크기를 반영한 경고 기준입니다.
 
+## GitHub Pages
+
+공개 주소: https://hee882.github.io/game-builder/ (쇼룸: https://hee882.github.io/game-builder/showroom.html).
+
+`main`에 push하면 `.github/workflows/pages.yml`이 Node.js 24에서 의존성 설치, 테스트, 타입 검사와 빌드 후 GitHub Pages로 배포합니다. GitHub Actions에서 수동 실행할 수도 있습니다.
+
+Pages 빌드는 `npm run build -- --base=/game-builder/`로 프로젝트 경로를 적용합니다. 기본 `npm run build`와 Android 빌드는 기존 루트 경로를 사용합니다.
+
 ## Android
 
 Android 프로젝트는 `android/`에 포함되어 있습니다. 네이티브 빌드에는 JDK 21과 프로젝트의 `compileSdkVersion`에 맞는 Android SDK Platform 36 및 Build Tools가 필요합니다. Android Studio에서 SDK를 설치하고 `JAVA_HOME`, `ANDROID_HOME` 또는 로컬 `android/local.properties`로 경로를 설정합니다.
