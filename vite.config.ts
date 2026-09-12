@@ -6,7 +6,7 @@ export default defineConfig({
     // allow that known vendor cost while retaining warnings above 1.3 MB.
     chunkSizeWarningLimit: 1300,
     rollupOptions: {
-      input: { app: 'index.html', showroom: 'showroom.html' },
+      input: { app: 'index.html', challenge: 'challenge.html', showroom: 'showroom.html' },
       output: { manualChunks: { phaser: ['phaser'] } },
     },
   },

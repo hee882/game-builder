@@ -1,20 +1,624 @@
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="theme-color" content="#17373f" />
-    <meta name="color-scheme" content="dark" />
-    <title>플레이룸 챌린지</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/mobile-main.ts"></script>
-  </body>
-</html>
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#02070f"><title>아비스 다이버</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  :root{
+    --abyss:#02070f; --deep:#06213c; --mid:#0b3d63; --sun:#1b6f9e;
+    --ink:#e8f1f7; --ink-dim:#9fb8c9; --ink-mute:#5f7d93;
+    --brass:#f2b950; --brass-dark:#a8751f; --coin:#ffd166; --cta:#ffb020;
+    --panel:#08182a; --panel-2:#0c2136; --panel-edge:#173a58;
+    --good:#5ee0a0; --bad:#ff6b6b; --pearl:#dfe9f5;
+    --display:'Jua','Noto Sans KR',system-ui,sans-serif;
+    --body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--abyss);color:var(--ink);font-family:var(--body);
+    -webkit-user-select:none;user-select:none;touch-action:manipulation;overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .app{max-width:430px;margin:0 auto;height:100dvh;display:flex;flex-direction:column;background:var(--abyss);position:relative;overflow:hidden}
+
+  /* ---------- HUD ---------- */
+  .hud{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;justify-content:space-between;align-items:flex-start;padding:12px 16px;gap:12px;pointer-events:none;background:linear-gradient(rgba(2,7,15,.75),rgba(2,7,15,0))}
+  .depth{display:flex;flex-direction:column;gap:2px}
+  .depth .num{font-family:var(--display);font-size:34px;line-height:1;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+  .depth .num small{font-size:18px;color:var(--ink-dim);margin-left:2px}
+  .depth .zone{font-size:12px;color:var(--ink-dim);letter-spacing:.08em;text-transform:uppercase}
+  .depth .hull{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--ink-dim)}
+  .depth .hull .bar{width:70px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
+  .depth .hull .bar i{display:block;height:100%;width:0;background:var(--good);transition:width .2s}
+  .depth .hull.warn .bar i{background:var(--bad)}
+  .stats{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .stat{display:flex;align-items:center;gap:6px;font-family:var(--display);font-size:20px;line-height:1;font-variant-numeric:tabular-nums}
+  .stat.sub{font-size:13px;font-family:var(--body);color:var(--ink-dim);gap:8px}
+  .coin-ico{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff2b3,var(--coin) 55%,#c9932a);box-shadow:0 0 6px rgba(255,209,102,.5)}
+  .pearl-ico{width:11px;height:11px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,var(--pearl) 60%,#8fa6bd)}
+  .mute{pointer-events:auto;margin-top:2px;padding:5px 10px;border-radius:12px;background:rgba(2,7,15,.55);border:1px solid var(--panel-edge);color:var(--ink-dim);font-size:11px;font-family:var(--display);letter-spacing:.05em}
+  .mute.on{color:var(--coin);border-color:var(--brass-dark)}
+
+  /* ---------- SEA ---------- */
+  .sea{flex:1;position:relative;min-height:0}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+  .toast{position:absolute;left:50%;top:96px;transform:translateX(-50%);z-index:3;font-family:var(--display);font-size:18px;color:var(--coin);background:rgba(2,7,15,.7);padding:6px 14px;border-radius:20px;border:1px solid var(--panel-edge);opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+  .toast.show{opacity:1}
+  .banner{position:absolute;left:0;right:0;top:38%;z-index:3;text-align:center;pointer-events:none;opacity:0;transform:scale(.9);transition:opacity .3s,transform .3s}
+  .banner.show{opacity:1;transform:scale(1)}
+  .banner b{display:block;font-family:var(--display);font-size:40px;font-weight:400;color:#fff;text-shadow:0 0 24px rgba(122,208,224,.8),0 2px 0 #000}
+  .banner span{display:block;font-size:13px;color:var(--ink-dim);letter-spacing:.2em}
+  .combo{position:absolute;right:16px;top:118px;z-index:3;text-align:right;pointer-events:none;opacity:0;transition:opacity .2s}
+  .combo.show{opacity:1}
+  .combo b{display:block;font-family:var(--display);font-size:34px;line-height:1;font-weight:400;color:#fff;text-shadow:0 0 16px var(--coin),0 2px 0 #000}
+  .combo span{font-size:11px;color:var(--coin);letter-spacing:.15em}
+  .boss{position:absolute;left:16px;right:16px;top:100px;z-index:3;pointer-events:none;opacity:0;transition:opacity .3s}
+  .boss.show{opacity:1}
+  .boss .name{display:flex;justify-content:space-between;font-family:var(--display);font-size:15px;color:#ffb3b3;text-shadow:0 1px 0 #000}
+  .boss .bar{height:10px;border-radius:5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,107,107,.5);overflow:hidden;margin-top:4px}
+  .boss .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff6b6b,#ff2d55);transition:width .1s}
+  .mult{position:absolute;right:16px;bottom:12px;z-index:3;font-family:var(--display);font-size:15px;color:var(--abyss);background:var(--cta);padding:5px 12px;border-radius:14px;box-shadow:0 2px 10px rgba(255,176,32,.5)}
+  .hint{position:absolute;left:0;right:0;bottom:16px;text-align:center;z-index:2;font-size:13px;color:var(--ink-dim);pointer-events:none;transition:opacity .4s}
+  .vignette{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity .4s;background:radial-gradient(ellipse at center,transparent 45%,rgba(255,60,60,.55) 100%)}
+  .vignette.show{opacity:1}
+
+  /* ---------- PANEL ---------- */
+  .panel{position:relative;z-index:3;padding:10px 16px calc(12px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--panel-edge);display:grid;gap:8px}
+  .shop{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  button{font-family:var(--body);color:var(--ink);border:0;cursor:pointer}
+  button:focus-visible{outline:2px solid var(--coin);outline-offset:2px}
+  .buy{display:grid;gap:2px;text-align:left;padding:8px 8px;border-radius:10px;background:var(--panel-2);border:1px solid var(--panel-edge);transition:transform .08s,border-color .15s,background .15s;min-height:66px}
+  .buy .name{font-family:var(--display);font-size:14px;line-height:1.1}
+  .buy .lv{font-size:10px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .buy .cost{display:flex;align-items:center;gap:4px;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink-mute);margin-top:3px}
+  .buy .cost .coin-ico{width:10px;height:10px;box-shadow:none}
+  .buy.ok{border-color:var(--brass-dark);background:linear-gradient(var(--panel-2),#12294a)}
+  .buy.ok .cost{color:var(--coin)}
+  .buy.ok:active{transform:scale(.96)}
+  .buy.urgent{border-color:var(--bad);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,107,0)}50%{box-shadow:0 0 0 4px rgba(255,107,107,.35)}}
+  .ad{padding:12px;border-radius:10px;background:var(--cta);color:var(--abyss);font-family:var(--display);font-size:17px;line-height:1.1;display:grid;gap:2px;box-shadow:0 3px 0 #b87a12}
+  .ad small{font-family:var(--body);font-size:11px;font-weight:500;opacity:.75}
+  .ad:active{transform:translateY(2px);box-shadow:0 1px 0 #b87a12}
+  .ad[disabled]{opacity:.55;box-shadow:none;transform:none}
+  .prestige{padding:12px;border-radius:10px;font-family:var(--display);font-size:17px;background:linear-gradient(135deg,#223a5c,#0f2038);border:1px solid var(--pearl);color:var(--pearl);display:grid;gap:2px}
+  .prestige small{font-family:var(--body);font-size:11px;color:var(--ink-dim)}
+  .prestige[hidden]{display:none}
+
+  /* ---------- MODALS ---------- */
+  .modal{position:absolute;inset:0;z-index:10;background:rgba(2,7,15,.82);display:grid;place-items:center;padding:24px}
+  .modal[hidden]{display:none}
+  .sheet{width:100%;max-width:340px;background:var(--panel);border:1px solid var(--panel-edge);border-radius:16px;padding:20px;display:grid;gap:14px}
+  .sheet h2{margin:0;font-family:var(--display);font-size:22px;font-weight:400;text-wrap:balance}
+  .sheet p{margin:0;font-size:14px;color:var(--ink-dim);line-height:1.55}
+  .sheet .big{font-family:var(--display);font-size:32px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btn{padding:12px;border-radius:10px;font-family:var(--display);font-size:16px;background:var(--panel-2);border:1px solid var(--panel-edge)}
+  .btn.primary{background:var(--cta);color:var(--abyss);border-color:transparent}
+  .relics{display:grid;gap:8px}
+  .relic{text-align:left;padding:12px 14px;border-radius:10px;background:var(--panel-2);border:1px solid var(--panel-edge);display:grid;gap:3px}
+  .relic:active{border-color:var(--pearl)}
+  .relic .rn{font-family:var(--display);font-size:16px;color:var(--pearl)}
+  .relic .rd{font-size:13px;color:var(--ink-dim)}
+  .adwatch{display:grid;place-items:center;text-align:center;gap:10px}
+  .adwatch .count{font-family:var(--display);font-size:56px;color:var(--cta);line-height:1}
+  .adwatch p{color:var(--ink-mute);font-size:12px}
+  .chest{display:grid;place-items:center;text-align:center;gap:8px}
+  .chest .big{justify-content:center;color:var(--coin)}
+  @media (prefers-reduced-motion:reduce){.toast,.buy,.banner,.combo{transition:none}.buy.urgent{animation:none}}
+</style></head><body>
+
+<div class="app" id="app">
+  <div class="hud">
+    <div class="depth">
+      <div class="num"><span id="depth">0</span><small>m</small></div>
+      <div class="zone" id="zone">햇빛층</div>
+      <div class="hull" id="hull"><span>선체</span><div class="bar"><i id="hull-bar"></i></div><span id="hull-txt">600m</span></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="coin-ico"></span><span id="coins">0</span></div>
+      <div class="stat sub">
+        <span><span class="pearl-ico" style="display:inline-block;vertical-align:-1px"></span> <span id="pearls">0</span></span>
+        <span>도감 <span id="dex">0</span>/9</span>
+      </div>
+      <a href="./guard-the-shop.html" style="color:#9fb8c9;font-size:12px;text-decoration:none">지키는 가게 ↗</a><button class="mute on" id="b-mute">SOUND ON</button>
+    </div>
+  </div>
+
+  <div class="sea">
+    <canvas id="sea"></canvas>
+    <div class="vignette" id="vig"></div>
+    <div class="toast" id="toast"></div>
+    <div class="banner" id="banner"><b>중층</b><span>300m</span></div>
+    <div class="combo" id="combo"><b>x1.0</b><span>COMBO 3</span></div>
+    <div class="boss" id="bossbar"><div class="name"><span id="boss-name">대왕 문어</span><span id="boss-t">25s</span></div><div class="bar"><i id="boss-hp"></i></div></div>
+    <div class="mult" id="mult" hidden>×2 <span id="multT">30</span>s</div>
+    <div class="hint" id="hint">물고기를 탭해서 잡으세요</div>
+  </div>
+
+  <div class="panel">
+    <div class="shop">
+      <button class="buy" id="b-net"><span class="name">그물</span><span class="lv" id="net-lv">Lv.1</span><span class="cost"><span class="coin-ico"></span><span id="net-cost">30</span></span></button>
+      <button class="buy" id="b-drone"><span class="name">드론</span><span class="lv" id="drone-lv">0대</span><span class="cost"><span class="coin-ico"></span><span id="drone-cost">50</span></span></button>
+      <button class="buy" id="b-engine"><span class="name">엔진</span><span class="lv" id="engine-lv">Lv.1</span><span class="cost"><span class="coin-ico"></span><span id="engine-cost">40</span></span></button>
+      <button class="buy" id="b-hull"><span class="name">선체</span><span class="lv" id="hull-lv">Lv.1</span><span class="cost"><span class="coin-ico"></span><span id="hull-cost">200</span></span></button>
+    </div>
+    <button class="ad" id="b-ad"><span>광고 보고 30초 동안 코인 ×2</span><small>프로토타입 — 실제 광고는 재생되지 않습니다</small></button>
+    <button class="prestige" id="b-prestige" hidden><span>수면으로 귀환 · 진주 +<span id="pearl-gain">1</span></span><small>수심·코인·장비 초기화, 진주당 코인 +25% 영구, 유물 1개 선택</small></button>
+  </div>
+
+  <div class="modal" id="m-offline" hidden>
+    <div class="sheet">
+      <h2>잠수정이 혼자 일했습니다</h2>
+      <p id="off-desc"></p>
+      <div class="big"><span class="coin-ico"></span><span id="off-amt">0</span></div>
+      <div class="row"><button class="btn" id="off-take">받기</button><button class="btn primary" id="off-double">광고 보고 ×2</button></div>
+    </div>
+  </div>
+  <div class="modal" id="m-relic" hidden>
+    <div class="sheet">
+      <h2>심해에서 건진 유물</h2>
+      <p>셋 중 하나만 가져갈 수 있습니다. 다음 잠항부터 영구 적용됩니다.</p>
+      <div class="relics" id="relic-list"></div>
+    </div>
+  </div>
+  <div class="modal" id="m-ad" hidden>
+    <div class="sheet adwatch"><div class="count" id="ad-count">3</div><h2>광고 시청 중</h2><p>실제 앱에서는 여기서 보상형 광고 SDK(AdMob 등)가 재생됩니다</p></div>
+  </div>
+  <div class="modal" id="m-chest" hidden>
+    <div class="sheet chest">
+      <h2 id="chest-title">보스를 쓰러뜨렸다!</h2>
+      <p id="chest-desc">문어가 품고 있던 보물 상자</p>
+      <div class="big"><span class="coin-ico"></span><span id="chest-amt">0</span></div>
+      <p id="chest-extra"></p>
+      <button class="btn primary" id="chest-take" style="width:100%">챙기기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const SAVE_KEY = 'abyss-diver-v2';
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- 데이터 ----------
+  const SPECIES = [
+    { id:'sardine',  name:'정어리',     minD:0,    maxD:450,      value:5,   color:'#bfe3ee', size:13, speed:70,  w:10 },
+    { id:'seahorse', name:'해마',       minD:80,   maxD:600,      value:14,  color:'#ffd27a', size:14, speed:40,  w:5,  zig:true },
+    { id:'jelly',    name:'해파리',     minD:250,  maxD:950,      value:22,  color:'#ff8f73', size:17, speed:22,  w:7 },
+    { id:'eel',      name:'전기뱀장어', minD:450,  maxD:1300,     value:60,  color:'#9dffb8', size:22, speed:95,  w:3,  shock:true },
+    { id:'lantern',  name:'초롱아귀',   minD:700,  maxD:Infinity, value:85,  color:'#c3a3ff', size:19, speed:38,  w:6 },
+    { id:'shark',    name:'심해 상어',  minD:600,  maxD:1800,     value:220, color:'#8fa6bd', size:34, speed:120, w:2,  bite:true },
+    { id:'ghost',    name:'유령고기',   minD:900,  maxD:Infinity, value:160, color:'#d8f0ff', size:16, speed:30,  w:4,  ghost:true },
+    { id:'squid',    name:'대왕오징어', minD:1100, maxD:Infinity, value:340, color:'#7ad0e0', size:30, speed:50,  w:1,  rare:true },
+  ];
+  const BOSS = { id:'octopus', name:'대왕 문어' };
+  const RELICS = [
+    { id:'goldnet',  name:'황금 그물',   desc:'모든 코인 획득 +50%',        coin:1.5 },
+    { id:'twin',     name:'쌍둥이 드론', desc:'드론 포획 속도 2배',          drone:2 },
+    { id:'engine',   name:'심해 엔진',   desc:'하강 속도 +40%',              engine:1.4 },
+    { id:'charm',    name:'산호 부적',   desc:'잠항 시작 시 코인 500 지급',   start:500 },
+    { id:'lure',     name:'빛나는 미끼', desc:'물고기 출현 빈도 2배',         spawn:2 },
+    { id:'sonar',    name:'광역 소나',   desc:'그물 반경 +30',               net:30 },
+    { id:'plating',  name:'티타늄 장갑', desc:'선체 한계 +400m',             hull:400 },
+    { id:'harpoon',  name:'작살 발사기', desc:'보스에게 탭당 2배 피해',       harpoon:2 },
+  ];
+  const ZONES = [[0,'햇빛층'],[300,'중층'],[800,'심해'],[1500,'무광층'],[2500,'해구']];
+  const BG = [
+    [0,    [27,111,158], [11,61,99]],
+    [300,  [11,61,99],   [6,33,60]],
+    [800,  [6,33,60],    [2,7,15]],
+    [2000, [2,7,15],     [0,0,0]],
+    [3500, [10,2,6],     [0,0,0]],
+  ];
+  const HULL_MAX = [600, 1200, 2000, 3200, 5000, 8000, Infinity];
+
+  // ---------- 상태 ----------
+  const fresh = () => ({
+    coins:0, depth:0, net:1, drones:0, engine:1, hull:1,
+    pearls:0, relics:[], caught:{}, adUntil:0, lastSeen:Date.now(), runs:0, bossBeaten:0, sound:true, best:0,
+  });
+  let S = fresh();
+
+  const relicMul = key => S.relics.reduce((m, id) => m * ((RELICS.find(r => r.id === id) || {})[key] || 1), 1);
+  const relicAdd = key => S.relics.reduce((m, id) => m + ((RELICS.find(r => r.id === id) || {})[key] || 0), 0);
+  let combo = 0, comboT = 0;
+  const comboMul = () => 1 + 0.1 * Math.min(20, Math.max(0, combo - 1));
+  const coinMul  = () => (1 + 0.25 * S.pearls) * relicMul('coin') * (S.adUntil > Date.now() ? 2 : 1);
+  const netR     = () => 40 + 15 * S.net + relicAdd('net');
+  const engineV  = () => 5 * (1 + 0.6 * (S.engine - 1)) * relicMul('engine');
+  const droneCD  = () => 2.4 / relicMul('drone');
+  const hullMax  = () => HULL_MAX[Math.min(S.hull - 1, HULL_MAX.length - 1)] + relicAdd('hull');
+  const costNet    = () => Math.floor(30 * Math.pow(1.6, S.net - 1));
+  const costDrone  = () => Math.floor(50 * Math.pow(1.5, S.drones));
+  const costEngine = () => Math.floor(40 * Math.pow(1.7, S.engine - 1));
+  const costHull   = () => Math.floor(200 * Math.pow(2.3, S.hull - 1));
+  const zoneName = d => { let z = ZONES[0][1]; for (const [m, n] of ZONES) if (d >= m) z = n; return z; };
+
+  function fmt(n){
+    if (n < 1000) return Math.floor(n).toLocaleString('ko-KR');
+    const u = ['K','M','B','T']; let i = -1;
+    while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+    return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + u[i];
+  }
+
+  // ---------- 저장 ----------
+  const serialize = () => ({ ...S, lastSeen: Date.now() });
+  function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(serialize())); } catch (_) {} }
+  function load(){ try { const j = localStorage.getItem(SAVE_KEY) || localStorage.getItem('abyss-diver-v1'); return j ? JSON.parse(j) : null; } catch (_) { return null; } }
+
+  // ---------- 사운드 (전부 합성) ----------
+  const AU = { ctx:null, master:null, amb:null, ambGain:null, tension:null, tensionGain:null, creakT:0 };
+  function audio(){
+    if (!AU.ctx) { try { AU.ctx = new (window.AudioContext || window.webkitAudioContext)(); AU.master = AU.ctx.createGain(); AU.master.gain.value = S.sound ? 1 : 0; AU.master.connect(AU.ctx.destination); } catch (_) { return null; } }
+    if (AU.ctx.state === 'suspended') AU.ctx.resume();
+    return AU.ctx;
+  }
+  function tone(f, dur, type, vol, slide, cut){
+    const c = audio(); if (!c || !S.sound) return;
+    const o = c.createOscillator(), g = c.createGain(), lp = c.createBiquadFilter();
+    o.type = type || 'sine'; lp.type = 'lowpass'; lp.frequency.value = cut || 1400;
+    o.frequency.setValueAtTime(f, c.currentTime); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, slide), c.currentTime + dur);
+    g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(vol, c.currentTime + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+    o.connect(lp).connect(g).connect(AU.master); o.start(); o.stop(c.currentTime + dur + 0.05);
+  }
+  function noise(dur, vol, cut, hp){
+    const c = audio(); if (!c || !S.sound) return;
+    const n = Math.floor(c.sampleRate * dur), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 1.5);
+    const s = c.createBufferSource(), g = c.createGain(), lp = c.createBiquadFilter(), h = c.createBiquadFilter();
+    s.buffer = b; g.gain.value = vol; lp.type = 'lowpass'; lp.frequency.value = cut || 900; h.type = 'highpass'; h.frequency.value = hp || 60;
+    s.connect(h).connect(lp).connect(g).connect(AU.master); s.start();
+  }
+  const SFX = {
+    tap()   { noise(0.12, 0.10, 700, 120); tone(320, 0.14, 'sine', 0.05, 180, 900); },
+    catch() { tone(880, 0.09, 'triangle', 0.07, 1320, 3000); setTimeout(() => tone(1760, 0.16, 'sine', 0.06, 0, 4000), 40); },
+    rare()  { [660, 880, 1100, 1320, 1760].forEach((f, i) => setTimeout(() => tone(f, 0.35, 'triangle', 0.07, 0, 3500), i * 70)); },
+    zap()   { noise(0.06, 0.08, 4000, 800); tone(2200, 0.08, 'square', 0.03, 600, 5000); },
+    buy()   { tone(523, 0.1, 'triangle', 0.07, 0, 2500); setTimeout(() => tone(784, 0.18, 'triangle', 0.07, 0, 2500), 80); },
+    deny()  { tone(180, 0.2, 'triangle', 0.08, 120, 700); },
+    zone()  { tone(55, 1.6, 'sine', 0.22, 40, 300); noise(0.8, 0.08, 300, 40); setTimeout(() => tone(440, 0.6, 'sine', 0.05, 0, 1600), 200); },
+    creak() { tone(90 + Math.random() * 40, 0.5, 'sawtooth', 0.06, 60, 500); noise(0.3, 0.04, 400, 80); },
+    bite()  { tone(70, 0.5, 'sawtooth', 0.18, 35, 400); noise(0.35, 0.2, 600, 60); },
+    shock() { for (let i = 0; i < 5; i++) setTimeout(() => { noise(0.05, 0.1, 5000, 1500); tone(1800 + Math.random() * 800, 0.05, 'square', 0.04, 0, 6000); }, i * 60); },
+    bossIn(){ [110, 98, 87, 73].forEach((f, i) => setTimeout(() => tone(f, 0.8, 'sawtooth', 0.12, f * 0.7, 500), i * 320)); noise(1.2, 0.1, 250, 40); },
+    hit()   { noise(0.08, 0.14, 1200, 100); tone(200, 0.12, 'square', 0.06, 90, 1200); },
+    bossDie(){ noise(0.9, 0.22, 800, 40); tone(60, 1.2, 'sine', 0.2, 30, 300); [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => tone(f, 0.5, 'triangle', 0.08, 0, 3500), 400 + i * 110)); },
+    chest() { [784, 988, 1175, 1568].forEach((f, i) => setTimeout(() => tone(f, 0.4, 'sine', 0.07, 0, 4000), i * 90)); },
+    prestige(){ [262, 330, 392, 523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.9, 'sine', 0.07, 0, 3000), i * 120)); },
+  };
+  function ambient(){
+    const c = audio(); if (!c || AU.amb) return;
+    const g = c.createGain(); g.gain.value = 0; g.connect(AU.master); AU.ambGain = g;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; lp.connect(g);
+    [55, 82.4, 110.6].forEach((f, i) => { const o = c.createOscillator(); o.type = i ? 'triangle' : 'sine'; o.frequency.value = f; const og = c.createGain(); og.gain.value = [0.5, 0.25, 0.12][i]; o.connect(og).connect(lp); o.start(); });
+    const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.08; lg.gain.value = 0.35; lfo.connect(lg).connect(g.gain); lfo.start();
+    const n = c.createBufferSource(), nb = c.createBuffer(1, c.sampleRate * 4, c.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    n.buffer = nb; n.loop = true; const nlp = c.createBiquadFilter(); nlp.type = 'lowpass'; nlp.frequency.value = 350; const ng = c.createGain(); ng.gain.value = 0.05; n.connect(nlp).connect(ng).connect(g); n.start();
+    g.gain.linearRampToValueAtTime(0.5, c.currentTime + 3); AU.amb = true;
+    const t = c.createOscillator(), tg = c.createGain(), tl = c.createOscillator(), tlg = c.createGain(); t.type = 'sawtooth'; t.frequency.value = 55; tg.gain.value = 0; tl.frequency.value = 2.2; tlg.gain.value = 0.5; tl.connect(tlg).connect(tg.gain);
+    const tlp = c.createBiquadFilter(); tlp.type = 'lowpass'; tlp.frequency.value = 400; t.connect(tlp).connect(tg).connect(AU.master); t.start(); tl.start(); AU.tensionGain = tg;
+  }
+  function setTension(on){ if (!AU.tensionGain) return; AU.tensionGain.gain.linearRampToValueAtTime(on ? 0.12 : 0, AU.ctx.currentTime + 0.6); }
+
+  // ---------- 캔버스 ----------
+  const cv = document.getElementById('sea');
+  const cx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+  function resize(){ const r = cv.parentElement.getBoundingClientRect(); DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); cx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+  new ResizeObserver(resize).observe(cv.parentElement); resize();
+
+  const fish = [], bubbles = [], snow = [], sparks = [], flyers = [], floats = [], rings = [], zaps = [], cracks = [];
+  const drones = [];
+  const bossSkip = {};
+  let boss = null, shockT = 0, hitStop = 0, flash = 0, flashC = '#fff';
+  let shake = 0, subBob = 0, prop = 0, spawnT = 0, t = 0, lastZone = '', creakT = 0;
+  const sub = () => ({ x: W * 0.5, y: H * 0.42 + Math.sin(subBob) * 4 });
+  for (let i = 0; i < 40; i++) snow.push({ x: Math.random() * 430, y: Math.random() * 900, v: 8 + Math.random() * 14, s: Math.random() * 1.5 + .5 });
+
+  const lerp = (a, b, k) => a + (b - a) * k;
+  function bgAt(d){
+    let i = 0; while (i < BG.length - 2 && d > BG[i + 1][0]) i++;
+    const [d0, t0, b0] = BG[i], [d1, t1, b1] = BG[i + 1];
+    const k = Math.min(1, Math.max(0, (d - d0) / (d1 - d0)));
+    const mix = (a, b) => `rgb(${a.map((v, j) => Math.round(lerp(v, b[j], k))).join(',')})`;
+    return [mix(t0, t1), mix(b0, b1)];
+  }
+  const inLight = (x, y) => { const s = sub(); const dx = s.x - 30 - x; return dx > 0 && dx < 280 && Math.abs(y - s.y) < dx * 0.45; };
+
+  function spawnFish(){
+    const pool = SPECIES.filter(s => S.depth >= s.minD && S.depth < s.maxD);
+    if (!pool.length) return;
+    const total = pool.reduce((a, s) => a + s.w, 0);
+    let r = Math.random() * total, sp = pool[0];
+    for (const s of pool) { r -= s.w; if (r <= 0) { sp = s; break; } }
+    const dir = Math.random() < .5 ? 1 : -1;
+    const sb = sub();
+    fish.push({ sp, x: dir > 0 ? -40 : W + 40, y: sp.bite ? sb.y + (Math.random() - .5) * 40 : 60 + Math.random() * (H - 140), vx: dir * sp.speed * (0.8 + Math.random() * .4), ph: Math.random() * 6.28, size: sp.size * (0.85 + Math.random() * .3), bit: false });
+  }
+
+  function addCombo(){ combo = comboT > 0 ? combo + 1 : 1; comboT = 1.3; }
+  function catchFish(f, i, from){
+    addCombo();
+    const v = Math.max(1, Math.round(f.sp.value * coinMul() * comboMul()));
+    S.coins += v; S.caught[f.sp.id] = (S.caught[f.sp.id] || 0) + 1;
+    fish.splice(i, 1);
+    floats.push({ x: f.x, y: f.y - 10, text: '+' + fmt(v), t: 0, c: f.sp.rare ? '#7ad0e0' : '#ffd166', big: f.sp.rare || f.sp.bite });
+    const n = REDUCED ? 3 : (f.sp.rare || f.sp.bite ? 18 : 9);
+    for (let k = 0; k < n; k++) sparks.push({ x: f.x, y: f.y, vx: (Math.random() - .5) * 180, vy: (Math.random() - .8) * 160, t: 0, c: f.sp.color });
+    for (let k = 0; k < (REDUCED ? 1 : 3); k++) flyers.push({ x: f.x, y: f.y, sx: f.x, sy: f.y, t: -k * .06 });
+    if (from) { zaps.push({ x1: from.x, y1: from.y, x2: f.x, y2: f.y, t: 0 }); SFX.zap(); } else SFX.catch();
+    if (!REDUCED) shake = Math.min(6, shake + (f.sp.bite ? 5 : 2));
+    if (f.sp.rare) { toast(`${f.sp.name} 포획! 희귀`); SFX.rare(); flash = .5; flashC = '#7ad0e0'; }
+    if (f.sp.bite) { toast('상어 포획! 큰 놈이다'); flash = .3; flashC = '#ffd166'; }
+    if (f.sp.shock && !from) { shockT = 1.4; SFX.shock(); flash = .4; flashC = '#9dffb8'; toast('감전! 1.4초 동안 손이 저려요'); }
+  }
+
+  function spawnBoss(idx){
+    boss = { idx, x: -80, y: H * 0.5, hp: 10 + idx * 6, max: 10 + idx * 6, t: 0, life: 26, ph: 0, slamT: 5, hurt: 0, dir: 1 };
+    setTension(true); SFX.bossIn(); banner(BOSS.name + ' 출현', '탭해서 공격 · ' + boss.life + '초');
+    if (!REDUCED) shake = 8;
+  }
+  function hitBoss(){
+    const dmg = 1 * relicMul('harpoon'); boss.hp -= dmg; boss.hurt = .15; hitStop = .05; SFX.hit(); addCombo();
+    for (let k = 0; k < 8; k++) sparks.push({ x: boss.x + (Math.random() - .5) * 40, y: boss.y + (Math.random() - .5) * 30, vx: (Math.random() - .5) * 200, vy: (Math.random() - .8) * 160, t: 0, c: '#2a1230' });
+    floats.push({ x: boss.x, y: boss.y - 40, text: '-' + dmg, t: 0, c: '#ff8f8f', big: true });
+    if (!REDUCED) shake = Math.min(9, shake + 3);
+    if (boss.hp <= 0) beatBoss();
+  }
+  function beatBoss(){
+    const idx = boss.idx; SFX.bossDie(); setTension(false); flash = .8; flashC = '#fff'; if (!REDUCED) shake = 12; hitStop = .18;
+    for (let k = 0; k < 40; k++) sparks.push({ x: boss.x, y: boss.y, vx: (Math.random() - .5) * 320, vy: (Math.random() - .7) * 300, t: 0, c: ['#ff8f73','#ffd166','#7ad0e0'][k % 3] });
+    S.caught[BOSS.id] = (S.caught[BOSS.id] || 0) + 1; S.bossBeaten = Math.max(S.bossBeaten, idx);
+    const amt = Math.floor(400 * idx * coinMul()); boss = null;
+    setTimeout(() => { $('chest-title').textContent = BOSS.name + ' 격파!'; $('chest-desc').textContent = idx * 500 + 'm 보스가 품고 있던 보물 상자'; $('chest-amt').textContent = fmt(amt); $('chest-extra').textContent = idx % 2 === 0 ? '+ 진주 1개' : ''; $('chest-take').onclick = () => { S.coins += amt; if (idx % 2 === 0) S.pearls++; $('m-chest').hidden = true; SFX.chest(); }; $('m-chest').hidden = false; }, 700);
+  }
+
+  // 탭 → 그물 / 보스 공격
+  cv.addEventListener('pointerdown', e => {
+    ambient(); audio();
+    if (shockT > 0) { SFX.deny(); return; }
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, R = netR();
+    if (boss && (x - boss.x) ** 2 + (y - boss.y) ** 2 < 55 ** 2) { hitBoss(); return; }
+    rings.push({ x, y, r: 0, R, t: 0 }); SFX.tap();
+    let got = 0;
+    for (let i = fish.length - 1; i >= 0; i--) { const f = fish[i]; if ((f.x - x) ** 2 + (f.y - y) ** 2 <= R * R) { catchFish(f, i, null); got++; } }
+    if (!got) for (let k = 0; k < 3; k++) bubbles.push({ x: x + (Math.random() - .5) * 20, y, v: 30 + Math.random() * 30, s: 2 + Math.random() * 2, t: 0 });
+    hint.style.opacity = 0;
+  });
+
+  // ---------- 루프 ----------
+  function update(dt){
+    if (hitStop > 0) { hitStop -= dt; return; }
+    t += dt; subBob += dt * 2; prop += dt * 18;
+    if (shake > 0) shake = Math.max(0, shake - dt * 14);
+    if (flash > 0) flash = Math.max(0, flash - dt * 2.5);
+    if (shockT > 0) shockT -= dt;
+    comboT -= dt; if (comboT <= 0) combo = 0;
+
+    // 하강 + 선체 한계
+    const max = hullMax(), atLimit = S.depth >= max;
+    if (!atLimit) S.depth += engineV() * dt; else { S.depth = max; creakT -= dt; if (creakT <= 0) { creakT = 2.2 + Math.random(); SFX.creak(); if (!REDUCED) shake = Math.min(4, shake + 2); cracks.push({ x: Math.random() * W, y: Math.random() * H, a: Math.random() * 6.28, t: 0 }); } }
+    S.best = Math.max(S.best, S.depth);
+    const z = zoneName(S.depth); if (z !== lastZone) { if (lastZone) { banner(z, Math.floor(S.depth / 100) * 100 + 'm'); SFX.zone(); if (!REDUCED) shake = 5; } lastZone = z; }
+
+    // 보스 등장: 500m마다
+    const m = Math.floor(S.depth / 500);
+    if (!boss && m > S.bossBeaten && m >= 1 && !bossSkip[m]) { spawnBoss(m); }
+    if (boss) {
+      boss.t += dt; boss.life -= dt; boss.ph += dt * 2; boss.hurt = Math.max(0, boss.hurt - dt);
+      const sb = sub(); boss.x = lerp(boss.x, Math.min(sb.x - 110, boss.x + 40), dt * 1.2); boss.y = sb.y + Math.sin(boss.ph) * 30;
+      boss.slamT -= dt;
+      if (boss.slamT <= 0) { boss.slamT = 4.5; const loss = Math.floor(S.coins * 0.06); S.coins -= loss; SFX.bite(); flash = .5; flashC = '#ff2d55'; if (!REDUCED) shake = 10; floats.push({ x: sb.x, y: sb.y - 30, text: '-' + fmt(loss), t: 0, c: '#ff6b6b', big: true }); toast('촉수 강타! 코인 -6%'); }
+      if (boss.life <= 0) { boss = null; setTension(false); toast('문어가 어둠 속으로 사라졌다'); bossSkip[m] = true; }
+    }
+
+    spawnT -= dt;
+    const cap = 8 + Math.min(8, Math.floor(S.depth / 200));
+    if (spawnT <= 0 && fish.length < cap) { spawnFish(); spawnT = 0.9 / relicMul('spawn'); }
+
+    const sb = sub();
+    for (let i = fish.length - 1; i >= 0; i--) {
+      const f = fish[i]; f.x += f.vx * dt; f.ph += dt * (f.sp.id === 'jelly' ? 2 : 6);
+      f.y += (f.sp.zig ? Math.sin(f.ph) * 60 : Math.sin(f.ph * .5) * 12) * dt;
+      if (f.sp.bite && !f.bit && Math.abs(f.x - sb.x) < 26 && Math.abs(f.y - sb.y) < 30) { f.bit = true; const loss = Math.floor(S.coins * 0.1); S.coins -= loss; SFX.bite(); flash = .6; flashC = '#ff2d55'; if (!REDUCED) shake = 9; floats.push({ x: sb.x, y: sb.y - 30, text: '-' + fmt(loss), t: 0, c: '#ff6b6b', big: true }); toast('상어에게 물렸다! 코인 -10%'); }
+      if (f.x < -80 || f.x > W + 80) fish.splice(i, 1);
+    }
+
+    while (drones.length < S.drones) drones.push({ a: Math.random() * 6.28, cd: Math.random() * droneCD() });
+    while (drones.length > S.drones) drones.pop();
+    drones.forEach((d, k) => {
+      d.a += dt * 1.2; d.cd -= dt; d.x = sb.x + Math.cos(d.a + k) * 62; d.y = sb.y + Math.sin(d.a + k) * 42;
+      if (d.cd <= 0 && fish.length) { let best = -1, bd = 150 ** 2; fish.forEach((f, i) => { const dd = (f.x - d.x) ** 2 + (f.y - d.y) ** 2; if (dd < bd) { bd = dd; best = i; } }); if (best >= 0) { catchFish(fish[best], best, d); d.cd = droneCD(); } }
+    });
+
+    if (Math.random() < dt * 4) bubbles.push({ x: sb.x - 28, y: sb.y + 6, v: 35 + Math.random() * 25, s: 1.5 + Math.random() * 2.5, t: 0 });
+    for (let i = bubbles.length - 1; i >= 0; i--) { const b = bubbles[i]; b.y -= b.v * dt; b.x += Math.sin(t * 3 + b.s) * 8 * dt; b.t += dt; if (b.y < -10 || b.t > 4) bubbles.splice(i, 1); }
+    snow.forEach(s => { s.y += s.v * dt; if (s.y > H + 5) { s.y = -5; s.x = Math.random() * W; } });
+    for (let i = sparks.length - 1; i >= 0; i--) { const p = sparks[i]; p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 120 * dt; if (p.t > .6) sparks.splice(i, 1); }
+    for (let i = flyers.length - 1; i >= 0; i--) { const p = flyers[i]; p.t += dt * 1.6; if (p.t < 0) continue; const k = Math.min(1, p.t), e = k * k * (3 - 2 * k); const tx = W - 30, ty = 22; p.x = lerp(p.sx, tx, e) + Math.sin(k * 3.14) * -40; p.y = lerp(p.sy, ty, e) - Math.sin(k * 3.14) * 30; if (k >= 1) flyers.splice(i, 1); }
+    for (let i = floats.length - 1; i >= 0; i--) { floats[i].t += dt; if (floats[i].t > 1) floats.splice(i, 1); }
+    for (let i = rings.length - 1; i >= 0; i--) { rings[i].t += dt; if (rings[i].t > .4) rings.splice(i, 1); }
+    for (let i = zaps.length - 1; i >= 0; i--) { zaps[i].t += dt; if (zaps[i].t > .18) zaps.splice(i, 1); }
+    for (let i = cracks.length - 1; i >= 0; i--) { cracks[i].t += dt; if (cracks[i].t > 1.2) cracks.splice(i, 1); }
+  }
+
+  function draw(){
+    const [top, bot] = bgAt(S.depth);
+    const g = cx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, bot);
+    cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+    cx.save();
+    if (shake > 0) cx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+
+    const sun = Math.max(0, 1 - S.depth / 500);
+    if (sun > 0) { cx.save(); cx.globalAlpha = sun * .18; for (let i = 0; i < 4; i++) { const x = (i + .5) * W / 4 + Math.sin(t * .4 + i) * 20; const rg = cx.createLinearGradient(0, 0, 0, H * .8); rg.addColorStop(0, '#dff6ff'); rg.addColorStop(1, 'rgba(223,246,255,0)'); cx.fillStyle = rg; cx.beginPath(); cx.moveTo(x - 14, 0); cx.lineTo(x + 14, 0); cx.lineTo(x + 50, H * .8); cx.lineTo(x - 50, H * .8); cx.fill(); } cx.restore(); }
+    // 해구: 열수 분출
+    if (S.depth > 2500) { cx.save(); cx.globalAlpha = Math.min(1, (S.depth - 2500) / 500) * .5; for (let i = 0; i < 3; i++) { const x = (i + .5) * W / 3; const vg = cx.createLinearGradient(0, H, 0, H * .5); vg.addColorStop(0, '#ff4d2a'); vg.addColorStop(1, 'rgba(255,77,42,0)'); cx.fillStyle = vg; cx.beginPath(); cx.moveTo(x - 10, H); cx.lineTo(x + 10, H); cx.lineTo(x + 30 + Math.sin(t * 2 + i) * 10, H * .5); cx.lineTo(x - 30 + Math.sin(t * 2 + i) * 10, H * .5); cx.fill(); } cx.restore(); }
+    cx.fillStyle = 'rgba(200,220,235,.35)'; snow.forEach(s => { cx.beginPath(); cx.arc(s.x % (W + 10), s.y, s.s, 0, 6.28); cx.fill(); });
+
+    const sb = sub();
+    const dark = Math.min(1, Math.max(0, (S.depth - 300) / 600));
+    if (dark > 0) { const hg = cx.createRadialGradient(sb.x - 40, sb.y, 0, sb.x - 40, sb.y, 260); hg.addColorStop(0, `rgba(255,240,200,${.28 * dark})`); hg.addColorStop(1, 'rgba(255,240,200,0)'); cx.fillStyle = hg; cx.beginPath(); cx.moveTo(sb.x - 30, sb.y); cx.lineTo(sb.x - 300, sb.y - 130); cx.lineTo(sb.x - 300, sb.y + 130); cx.closePath(); cx.fill(); }
+
+    if (boss) drawBoss();
+    fish.forEach(drawFish);
+    cx.strokeStyle = 'rgba(220,240,255,.55)'; cx.lineWidth = 1; bubbles.forEach(b => { cx.beginPath(); cx.arc(b.x, b.y, b.s, 0, 6.28); cx.stroke(); });
+    zaps.forEach(z => { cx.strokeStyle = `rgba(122,208,224,${1 - z.t / .18})`; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(z.x1, z.y1); const mx = (z.x1 + z.x2) / 2 + (Math.random() - .5) * 14, my = (z.y1 + z.y2) / 2 + (Math.random() - .5) * 14; cx.lineTo(mx, my); cx.lineTo(z.x2, z.y2); cx.stroke(); });
+    drawSub(sb);
+    if (shockT > 0) { cx.strokeStyle = `rgba(157,255,184,${Math.random() * .8})`; cx.lineWidth = 2; for (let i = 0; i < 4; i++) { cx.beginPath(); cx.moveTo(sb.x + (Math.random() - .5) * 80, sb.y + (Math.random() - .5) * 40); cx.lineTo(sb.x + (Math.random() - .5) * 100, sb.y + (Math.random() - .5) * 60); cx.stroke(); } }
+    drones.forEach(d => { cx.fillStyle = '#f2b950'; cx.beginPath(); cx.arc(d.x, d.y, 6, 0, 6.28); cx.fill(); cx.fillStyle = Math.sin(t * 8 + d.a) > 0 ? '#7ad0e0' : '#1b3a55'; cx.beginPath(); cx.arc(d.x + 2, d.y - 2, 2, 0, 6.28); cx.fill(); cx.strokeStyle = 'rgba(242,185,80,.5)'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(d.x - 9, d.y - 5); cx.lineTo(d.x + 9, d.y - 5); cx.stroke(); });
+    rings.forEach(r => { const k = r.t / .4; cx.strokeStyle = `rgba(255,209,102,${1 - k})`; cx.lineWidth = 2.5 - k * 2; cx.beginPath(); cx.arc(r.x, r.y, r.R * Math.min(1, k * 2.2), 0, 6.28); cx.stroke(); });
+    sparks.forEach(p => { cx.globalAlpha = 1 - p.t / .6; cx.fillStyle = p.c; cx.beginPath(); cx.arc(p.x, p.y, 2.4, 0, 6.28); cx.fill(); }); cx.globalAlpha = 1;
+    flyers.forEach(p => { if (p.t < 0) return; cx.fillStyle = '#ffd166'; cx.beginPath(); cx.arc(p.x, p.y, 5, 0, 6.28); cx.fill(); cx.fillStyle = '#fff2b3'; cx.beginPath(); cx.arc(p.x - 1.5, p.y - 1.5, 2, 0, 6.28); cx.fill(); });
+    cx.textAlign = 'center';
+    floats.forEach(f => { cx.font = (f.big ? 26 : 18) + 'px Jua, "Noto Sans KR", sans-serif'; cx.globalAlpha = 1 - f.t; cx.fillStyle = f.c; cx.fillText(f.text, f.x, f.y - f.t * 40); }); cx.globalAlpha = 1;
+    // 선체 균열
+    cracks.forEach(c => { cx.strokeStyle = `rgba(255,255,255,${.5 * (1 - c.t / 1.2)})`; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(c.x, c.y); let x = c.x, y = c.y; for (let i = 0; i < 5; i++) { x += Math.cos(c.a + (Math.random() - .5)) * 14; y += Math.sin(c.a + (Math.random() - .5)) * 14; cx.lineTo(x, y); } cx.stroke(); });
+    cx.restore();
+    if (flash > 0) { cx.globalAlpha = flash * .5; cx.fillStyle = flashC; cx.fillRect(0, 0, W, H); cx.globalAlpha = 1; }
+  }
+
+  function drawFish(f){
+    const s = f.size, dir = Math.sign(f.vx) || 1;
+    cx.save(); cx.translate(f.x, f.y); cx.scale(dir, 1);
+    if (f.sp.ghost) cx.globalAlpha = inLight(f.x, f.y) ? .95 : .12;
+    if (f.sp.id === 'jelly') {
+      cx.fillStyle = f.sp.color; cx.globalAlpha = .85; cx.beginPath(); cx.arc(0, 0, s * .8, Math.PI, 0); cx.lineTo(s * .8, 3); cx.lineTo(-s * .8, 3); cx.fill();
+      cx.strokeStyle = f.sp.color; cx.lineWidth = 1.5; cx.globalAlpha = .6; for (let i = -2; i <= 2; i++) { cx.beginPath(); cx.moveTo(i * s * .3, 3); cx.quadraticCurveTo(i * s * .3 + Math.sin(f.ph + i) * 6, s * .9, i * s * .3 + Math.sin(f.ph * 1.3 + i) * 8, s * 1.6); cx.stroke(); }
+    } else if (f.sp.id === 'lantern') {
+      const lg = cx.createRadialGradient(s * .9, -s * .7, 0, s * .9, -s * .7, s * 1.3); lg.addColorStop(0, 'rgba(255,250,200,.9)'); lg.addColorStop(1, 'rgba(255,250,200,0)'); cx.fillStyle = lg; cx.beginPath(); cx.arc(s * .9, -s * .7, s * 1.3, 0, 6.28); cx.fill();
+      cx.fillStyle = f.sp.color; cx.beginPath(); cx.ellipse(0, 0, s * .9, s * .65, 0, 0, 6.28); cx.fill(); cx.beginPath(); cx.moveTo(-s * .8, 0); cx.lineTo(-s * 1.4, -s * .5 + Math.sin(f.ph) * 3); cx.lineTo(-s * 1.4, s * .5 + Math.sin(f.ph) * 3); cx.fill();
+      cx.strokeStyle = f.sp.color; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(s * .4, -s * .5); cx.quadraticCurveTo(s * .9, -s * 1.1, s * .9, -s * .7); cx.stroke(); cx.fillStyle = '#fff8c8'; cx.beginPath(); cx.arc(s * .9, -s * .7, 3, 0, 6.28); cx.fill(); cx.fillStyle = '#1a0f2e'; cx.beginPath(); cx.arc(s * .4, -s * .1, 2.5, 0, 6.28); cx.fill();
+    } else if (f.sp.id === 'squid') {
+      cx.fillStyle = f.sp.color; cx.globalAlpha = .9; cx.beginPath(); cx.ellipse(0, 0, s * 1.1, s * .35, 0, 0, 6.28); cx.fill(); cx.beginPath(); cx.moveTo(s * .6, -s * .3); cx.lineTo(s * 1.5, 0); cx.lineTo(s * .6, s * .3); cx.fill();
+      cx.strokeStyle = f.sp.color; cx.lineWidth = 2; for (let i = -2; i <= 2; i++) { cx.beginPath(); cx.moveTo(-s * .9, i * 3); cx.quadraticCurveTo(-s * 1.5, i * 6 + Math.sin(f.ph + i) * 6, -s * 2.2, i * 8 + Math.sin(f.ph * 1.2 + i) * 8); cx.stroke(); } cx.fillStyle = '#0a1d2e'; cx.beginPath(); cx.arc(-s * .3, -s * .1, 3.5, 0, 6.28); cx.fill();
+    } else if (f.sp.id === 'shark') {
+      cx.fillStyle = f.sp.color; cx.beginPath(); cx.ellipse(0, 0, s, s * .32, 0, 0, 6.28); cx.fill();
+      cx.beginPath(); cx.moveTo(-s * .2, -s * .25); cx.lineTo(0, -s * .85); cx.lineTo(s * .25, -s * .25); cx.fill();
+      const tw = Math.sin(f.ph * 1.5) * 5; cx.beginPath(); cx.moveTo(-s * .9, 0); cx.lineTo(-s * 1.35, -s * .55 + tw); cx.lineTo(-s * 1.2, tw); cx.lineTo(-s * 1.35, s * .45 + tw); cx.fill();
+      cx.fillStyle = '#dfe9f5'; cx.beginPath(); cx.ellipse(s * .1, s * .12, s * .7, s * .14, 0, 0, 6.28); cx.fill();
+      cx.fillStyle = '#ff2d55'; cx.beginPath(); cx.arc(s * .6, -s * .08, 2.5, 0, 6.28); cx.fill();
+      cx.strokeStyle = '#fff'; cx.lineWidth = 1.5; cx.beginPath(); for (let i = 0; i < 4; i++) { cx.moveTo(s * .55 + i * 4, s * .1); cx.lineTo(s * .57 + i * 4, s * .2); } cx.stroke();
+    } else if (f.sp.id === 'eel') {
+      cx.strokeStyle = f.sp.color; cx.lineWidth = 5; cx.lineCap = 'round'; cx.beginPath(); for (let i = 0; i <= 8; i++) { const x = -s + i * s * .25, y = Math.sin(f.ph + i * .8) * 6; i ? cx.lineTo(x, y) : cx.moveTo(x, y); } cx.stroke();
+      if (Math.sin(t * 20) > 0.3) { cx.strokeStyle = '#fff'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(-s * .5, -8); cx.lineTo(-s * .3, 8); cx.lineTo(0, -8); cx.stroke(); }
+      cx.fillStyle = '#0a1d2e'; cx.beginPath(); cx.arc(s * .95, Math.sin(f.ph + 6.4) * 6 - 1, 2, 0, 6.28); cx.fill();
+    } else if (f.sp.id === 'seahorse') {
+      cx.strokeStyle = f.sp.color; cx.lineWidth = 4; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(0, -s); cx.quadraticCurveTo(s * .5, -s * .5, 0, 0); cx.quadraticCurveTo(-s * .6, s * .5, s * .2, s * .9); cx.stroke();
+      cx.fillStyle = f.sp.color; cx.beginPath(); cx.ellipse(0, -s, s * .35, s * .25, 0, 0, 6.28); cx.fill(); cx.fillStyle = '#0a1d2e'; cx.beginPath(); cx.arc(s * .1, -s * 1.05, 1.5, 0, 6.28); cx.fill();
+    } else if (f.sp.id === 'ghost') {
+      cx.fillStyle = f.sp.color; cx.beginPath(); cx.ellipse(0, 0, s, s * .5, 0, 0, 6.28); cx.fill(); cx.beginPath(); cx.moveTo(-s * .8, 0); cx.lineTo(-s * 1.5, -s * .6 + Math.sin(f.ph) * 4); cx.lineTo(-s * 1.5, s * .6 + Math.sin(f.ph) * 4); cx.fill();
+      cx.fillStyle = '#1a2a3e'; cx.beginPath(); cx.arc(s * .5, -s * .1, 3, 0, 6.28); cx.fill();
+    } else {
+      cx.fillStyle = f.sp.color; cx.beginPath(); cx.ellipse(0, 0, s, s * .42, 0, 0, 6.28); cx.fill();
+      const tw = Math.sin(f.ph) * 4; cx.beginPath(); cx.moveTo(-s * .85, 0); cx.lineTo(-s * 1.35, -s * .45 + tw); cx.lineTo(-s * 1.35, s * .45 + tw); cx.fill();
+      cx.fillStyle = 'rgba(255,255,255,.35)'; cx.beginPath(); cx.ellipse(s * .1, -s * .1, s * .6, s * .15, 0, 0, 6.28); cx.fill(); cx.fillStyle = '#0a1d2e'; cx.beginPath(); cx.arc(s * .55, -s * .08, 2, 0, 6.28); cx.fill();
+    }
+    cx.restore(); cx.globalAlpha = 1;
+  }
+
+  function drawBoss(){
+    const b = boss; cx.save(); cx.translate(b.x, b.y);
+    const col = b.hurt > 0 ? '#ffffff' : '#a03a6a';
+    cx.strokeStyle = col; cx.lineWidth = 9; cx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.28 + b.ph * .3; cx.beginPath(); cx.moveTo(Math.cos(a) * 30, Math.sin(a) * 26); cx.quadraticCurveTo(Math.cos(a) * 70 + Math.sin(b.ph * 2 + i) * 18, Math.sin(a) * 60, Math.cos(a) * 95 + Math.sin(b.ph * 2.5 + i) * 22, Math.sin(a) * 85 + Math.cos(b.ph * 2 + i) * 12); cx.stroke(); }
+    const rg = cx.createRadialGradient(-10, -14, 5, 0, 0, 52); rg.addColorStop(0, b.hurt > 0 ? '#fff' : '#d85a9a'); rg.addColorStop(1, col); cx.fillStyle = rg; cx.beginPath(); cx.ellipse(0, -6, 48, 42, 0, 0, 6.28); cx.fill();
+    cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(-16, -8, 10, 0, 6.28); cx.arc(16, -8, 10, 0, 6.28); cx.fill();
+    cx.fillStyle = '#1a0f2e'; const ex = Math.sin(b.ph) * 3; cx.beginPath(); cx.arc(-16 + ex, -8, 5, 0, 6.28); cx.arc(16 + ex, -8, 5, 0, 6.28); cx.fill();
+    cx.strokeStyle = '#1a0f2e'; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(-28, -24); cx.lineTo(-8, -16); cx.moveTo(28, -24); cx.lineTo(8, -16); cx.stroke();
+    cx.restore();
+  }
+
+  function drawSub(p){
+    cx.save(); cx.translate(p.x, p.y);
+    cx.strokeStyle = '#c9c9c9'; cx.lineWidth = 2; for (let i = 0; i < 3; i++) { const a = prop + i * 2.09; cx.beginPath(); cx.moveTo(34, 0); cx.lineTo(34 + Math.cos(a) * 2, Math.sin(a) * 9); cx.stroke(); }
+    const hg = cx.createLinearGradient(0, -18, 0, 18); hg.addColorStop(0, '#f7cf7a'); hg.addColorStop(.55, '#f2b950'); hg.addColorStop(1, '#a8751f'); cx.fillStyle = hg; cx.beginPath(); cx.ellipse(0, 0, 36, 17, 0, 0, 6.28); cx.fill();
+    if (S.hull >= 3) { cx.strokeStyle = 'rgba(223,233,245,.7)'; cx.lineWidth = 2; cx.beginPath(); cx.ellipse(0, 0, 36, 17, 0, 0, 6.28); cx.stroke(); }
+    cx.fillStyle = '#d9a03a'; cx.fillRect(-8, -26, 18, 12); cx.fillStyle = '#a8751f'; cx.fillRect(-8, -16, 18, 3);
+    cx.fillStyle = '#e0c27a'; cx.fillRect(2, -34, 3, 9); cx.fillRect(2, -34, 8, 3);
+    cx.fillStyle = 'rgba(80,50,10,.45)'; for (let x = -24; x <= 24; x += 12) { cx.beginPath(); cx.arc(x, 12, 1.4, 0, 6.28); cx.fill(); }
+    const pg = cx.createRadialGradient(-10, -3, 1, -10, -3, 9); pg.addColorStop(0, '#dff6ff'); pg.addColorStop(1, '#2b7ea5'); cx.fillStyle = pg; cx.beginPath(); cx.arc(-10, -2, 8, 0, 6.28); cx.fill(); cx.strokeStyle = '#a8751f'; cx.lineWidth = 2.5; cx.stroke();
+    cx.fillStyle = 'rgba(255,255,255,.7)'; cx.beginPath(); cx.arc(-13, -5, 2, 0, 6.28); cx.fill();
+    cx.fillStyle = '#fff3c4'; cx.beginPath(); cx.ellipse(-34, 0, 4, 6, 0, 0, 6.28); cx.fill();
+    cx.restore();
+  }
+
+  // ---------- UI ----------
+  const $ = id => document.getElementById(id);
+  const hint = $('hint');
+  let toastT = null, bannerT = null;
+  function toast(msg){ const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 1800); }
+  function banner(big, small){ const el = $('banner'); el.querySelector('b').textContent = big; el.querySelector('span').textContent = small; el.classList.add('show'); clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.remove('show'), 2200); }
+
+  function renderUI(){
+    $('depth').textContent = Math.floor(S.depth).toLocaleString('ko-KR');
+    $('zone').textContent = zoneName(S.depth);
+    $('coins').textContent = fmt(S.coins); $('pearls').textContent = S.pearls; $('dex').textContent = Object.keys(S.caught).length;
+    const max = hullMax(), k = Math.min(1, S.depth / max), atLimit = S.depth >= max;
+    $('hull-bar').style.width = (k * 100) + '%'; $('hull-txt').textContent = isFinite(max) ? fmt(max) + 'm' : '∞'; $('hull').classList.toggle('warn', k > .85);
+    $('vig').classList.toggle('show', atLimit || shockT > 0);
+    $('net-lv').textContent = `Lv.${S.net} · 반경 ${netR()}`;
+    $('drone-lv').textContent = `${S.drones}대${S.drones ? ' · ' + droneCD().toFixed(1) + 's' : ''}`;
+    $('engine-lv').textContent = `Lv.${S.engine} · ${engineV().toFixed(0)}m/s`;
+    $('hull-lv').textContent = `Lv.${S.hull} · ${isFinite(max) ? fmt(max) + 'm' : '∞'}`;
+    [['net', costNet()], ['drone', costDrone()], ['engine', costEngine()], ['hull', costHull()]].forEach(([n, v]) => { $(n + '-cost').textContent = fmt(v); $('b-' + n).classList.toggle('ok', S.coins >= v); });
+    $('b-hull').classList.toggle('urgent', atLimit && isFinite(max));
+    const adOn = S.adUntil > Date.now(); $('mult').hidden = !adOn; $('b-ad').disabled = adOn; if (adOn) $('multT').textContent = Math.ceil((S.adUntil - Date.now()) / 1000);
+    const gain = Math.floor(S.depth / 1000); $('b-prestige').hidden = gain < 1; $('pearl-gain').textContent = gain;
+    const cb = $('combo'); cb.classList.toggle('show', combo >= 3); if (combo >= 3) { cb.querySelector('b').textContent = 'x' + comboMul().toFixed(1); cb.querySelector('span').textContent = 'COMBO ' + combo; }
+    const bb = $('bossbar'); bb.classList.toggle('show', !!boss); if (boss) { $('boss-hp').style.width = Math.max(0, boss.hp / boss.max * 100) + '%'; $('boss-t').textContent = Math.ceil(boss.life) + 's'; }
+    if (atLimit && isFinite(max) && !boss) { hint.textContent = '선체 한계 — 더 내려가려면 선체를 강화하세요'; hint.style.opacity = 1; } else if (hint.textContent !== '물고기를 탭해서 잡으세요') { hint.style.opacity = 0; }
+  }
+
+  const buy = (cost, apply, msg) => { audio(); ambient(); const c = cost(); if (S.coins < c) { SFX.deny(); return; } S.coins -= c; apply(); SFX.buy(); toast(msg()); };
+  $('b-net').onclick = () => buy(costNet, () => S.net++, () => `그물 반경 ${netR()}`);
+  $('b-drone').onclick = () => buy(costDrone, () => S.drones++, () => S.drones === 1 ? '드론이 알아서 잡기 시작합니다' : `드론 ${S.drones}대`);
+  $('b-engine').onclick = () => buy(costEngine, () => S.engine++, () => `하강 ${engineV().toFixed(0)} m/s`);
+  $('b-hull').onclick = () => buy(costHull, () => S.hull++, () => `선체 강화 · ${isFinite(hullMax()) ? fmt(hullMax()) + 'm까지' : '한계 없음'}`);
+  $('b-mute').onclick = () => { S.sound = !S.sound; audio(); if (AU.master) AU.master.gain.value = S.sound ? 1 : 0; $('b-mute').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF'; $('b-mute').classList.toggle('on', S.sound); if (S.sound) { ambient(); SFX.buy(); } };
+
+  function watchAd(then){ const m = $('m-ad'), cnt = $('ad-count'); let n = 3; cnt.textContent = n; m.hidden = false; const iv = setInterval(() => { n--; cnt.textContent = n; if (n <= 0) { clearInterval(iv); m.hidden = true; then(); } }, 700); }
+  $('b-ad').onclick = () => watchAd(() => { S.adUntil = Date.now() + 30000; toast('30초 동안 코인 ×2'); SFX.buy(); });
+
+  $('b-prestige').onclick = () => {
+    const pool = [...RELICS].filter(r => !S.relics.includes(r.id) || r.id === 'charm').sort(() => Math.random() - .5).slice(0, 3);
+    const list = $('relic-list'); list.innerHTML = '';
+    pool.forEach(r => { const b = document.createElement('button'); b.className = 'relic'; b.innerHTML = `<span class="rn">${r.name}</span><span class="rd">${r.desc}</span>`;
+      b.onclick = () => { const gain = Math.floor(S.depth / 1000); S.pearls += gain; S.relics.push(r.id); S.runs++; S.depth = 0; S.net = 1; S.drones = 0; S.engine = 1; S.hull = 1; S.bossBeaten = 0; S.coins = relicAdd('start'); fish.length = 0; drones.length = 0; boss = null; setTension(false); lastZone = ''; $('m-relic').hidden = true; SFX.prestige(); banner('수면으로 귀환', `진주 ${S.pearls}개 · 코인 +${S.pearls * 25}%`); save(); };
+      list.appendChild(b); });
+    $('m-relic').hidden = false;
+  };
+
+  function offline(prev){
+    if (!prev || !prev.drones) return;
+    const away = Math.min(Date.now() - (prev.lastSeen || Date.now()), 8 * 3600e3) / 1000; if (away < 60) return;
+    const avg = S.depth >= 700 ? 80 : S.depth >= 250 ? 20 : 5;
+    const amt = Math.floor(prev.drones * (away / droneCD()) * avg * .6 * coinMul()); if (amt < 1) return;
+    const min = Math.floor(away / 60);
+    $('off-desc').textContent = `자리를 비운 ${min >= 60 ? Math.floor(min / 60) + '시간 ' + (min % 60) + '분' : min + '분'} 동안 드론 ${prev.drones}대가 물고기를 잡았습니다.`;
+    $('off-amt').textContent = fmt(amt);
+    $('off-take').onclick = () => { S.coins += amt; $('m-offline').hidden = true; };
+    $('off-double').onclick = () => { $('m-offline').hidden = true; watchAd(() => { S.coins += amt * 2; toast(`코인 +${fmt(amt * 2)}`); }); };
+    $('m-offline').hidden = false;
+  }
+
+  // ---------- 부팅 ----------
+  let last = 0;
+  function frame(now){ const dt = Math.min(.05, (now - last) / 1000 || 0); last = now; update(dt); draw(); renderUI(); requestAnimationFrame(frame); }
+  function start(hot){
+    const prev = (hot && hot.coins != null) ? hot : load();
+    if (prev) S = { ...fresh(), ...prev, caught: prev.caught || {}, relics: prev.relics || [], hull: prev.hull || 1, bossBeaten: prev.bossBeaten || 0, sound: prev.sound !== false };
+    if (S.adUntil < Date.now()) S.adUntil = 0;
+    if (!(hot && hot.coins != null)) offline(prev);
+    if (S.runs || S.coins > 0) hint.style.opacity = 0;
+    lastZone = zoneName(S.depth);
+    $('b-mute').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF'; $('b-mute').classList.toggle('on', S.sound);
+    requestAnimationFrame(frame); setInterval(save, 2000);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+  }
+  window.claude?.hot?.snapshot?.(serialize);
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? null);
+})();
+</script>
+</body></html>
