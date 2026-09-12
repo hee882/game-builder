@@ -8,7 +8,14 @@ export class WorldRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.c = canvas.getContext("2d")!;
   }
-  rect(x: number, y: number, w: number, h: number, color: string, r = 0) {
+  rect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color: CanvasRenderingContext2D["fillStyle"],
+    r = 0,
+  ) {
     const c = this.c;
     c.fillStyle = color;
     c.beginPath();
@@ -206,7 +213,7 @@ export class WorldRenderer {
     const sky = c.createLinearGradient(0, 0, 0, 180);
     sky.addColorStop(0, "#d0e0cb");
     sky.addColorStop(1, "#a9c09d");
-    this.rect(0, 0, W, 190, sky as unknown as string);
+    this.rect(0, 0, W, 190, sky);
     this.polygon(
       [
         { x: 0, y: 170 },
@@ -514,7 +521,7 @@ export class WorldRenderer {
     const glow = c.createRadialGradient(470, 340, 20, 470, 340, 490);
     glow.addColorStop(0, "#426273");
     glow.addColorStop(1, "#223746");
-    this.rect(0, 0, W, H, glow as unknown as string);
+    this.rect(0, 0, W, H, glow);
     for (let i = 0; i < 95; i++) {
       const x = (i * 151 + 21) % 960,
         y = 90 + ((i * 61) % 500);
@@ -685,7 +692,7 @@ export class WorldRenderer {
     sky.addColorStop(0, "#a9c7cc");
     sky.addColorStop(0.8, "#e2d6b6");
     sky.addColorStop(1, "#d7c5a9");
-    this.rect(0, 0, W, H, sky as unknown as string);
+    this.rect(0, 0, W, H, sky);
     this.ellipse(780, 119, 39, 39, "#f6e7b5");
     for (let i = 0; i < 11; i++) {
       const x = i * 96 - 22,
