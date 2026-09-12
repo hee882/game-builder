@@ -1,29 +1,27 @@
 # game-builder
 
-게임을 만들어주는 빌더. 아직 스택 확정 전 — 아래 "스택" 섹션 참고.
+세 가지 게임의 조작감과 성장 연출을 비교하는 브라우저 쇼룸. 현재 구현은 `README.md` 참고.
 
 ## 스택
 
-> ⚠️ **미정**. 게임 유형이 정해지면 확정합니다.
-> 선택 가이드: [docs/stack-guide.md](docs/stack-guide.md)
+> 비교 쇼룸의 스택입니다. 최종 출시 게임의 플랫폼은 별도로 결정합니다.
 
 | 항목 | 값 |
 |------|-----|
 | 언어 | TypeScript (확정) |
-| 런타임/프레임워크 | 미정 |
-| 패키지 매니저 | 미정 |
+| 런타임/프레임워크 | Phaser 3 + Vite, 브라우저 |
+| 패키지 매니저 | npm (`package-lock.json`) |
 
-스택이 정해지면 이 표와 아래 "명령어"를 채우고, `.claude/commands/check.md`의 TODO도 함께 갱신하세요.
+게임 로직은 `src/game-state.ts`, 렌더링은 `src/renderer.ts`, UI와 Phaser 연결은 `src/main.ts`에 있습니다.
 
 ## 명령어
 
 ```bash
-# 스택 확정 후 채울 것
-# 설치:  <pm> install
-# 개발:  <pm> run dev
-# 빌드:  <pm> run build
-# 테스트: <pm> run test
-# 린트:  <pm> run lint
+npm ci
+npm run dev
+npm run build
+npm test
+npm run check # TypeScript 검사. 별도 lint 명령은 없음.
 ```
 
 ## 개발 워크플로우
