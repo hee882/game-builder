@@ -374,9 +374,21 @@ class ShowroomScene extends Phaser.Scene {
     super("showroom");
   }
   create() {
+    this.keys.clear();
+    this.uiTimer = 0;
     this.surface = this.textures.createCanvas("world", 960, 660)!;
     this.worldRenderer = new WorldRenderer(this.surface.canvas);
     this.add.image(0, 0, "world").setOrigin(0);
+    const listeners = new AbortController();
+    const cleanup = () => {
+      listeners.abort();
+      this.keys.clear();
+      this.textures.remove("world");
+      this.events.off(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+      this.events.off(Phaser.Scenes.Events.DESTROY, cleanup);
+    };
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+    this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (!paused) {
         el("game").focus({ preventScroll: true });
@@ -413,11 +425,14 @@ class ShowroomScene extends Phaser.Scene {
           e.preventDefault();
         this.keys.add(e.key.toLowerCase());
       }
-    });
+    }, { signal: listeners.signal });
     window.addEventListener("keyup", (e) =>
       this.keys.delete(e.key.toLowerCase()),
+      { signal: listeners.signal },
     );
-    window.addEventListener("blur", () => this.keys.clear());
+    window.addEventListener("blur", () => this.keys.clear(), {
+      signal: listeners.signal,
+    });
   }
   update(_time: number, delta: number) {
     const dt = Math.min(delta / 1000, 0.05);
