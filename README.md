@@ -1,25 +1,34 @@
 # game-builder
 
-## 현재 첫 화면: 아비스 다이버 v2
+## 현재 첫 화면: 심해 전초기지
 
-클로드가 2026-09-12에 제작한 심해 잠수정 방치형 프로토타입을 임시 작업 폴더에서 복구했습니다. 기존 게임을 다시 설계한 버전이 아니라 당시 결과물을 확인하기 위한 복구 배포입니다.
+해구에 전초기지를 세우고 좁은 길목을 설계해 **8웨이브(2장)** 를 막아내는 한국어 모바일 우선 전략 방어 게임입니다. 기존 아비스 다이버를 대체합니다.
 
-- `/`: 아비스 다이버 v2 — 포획, 드론 자동화, 장비 강화, 보스, 귀환·유물, 합성 사운드.
-- `/guard-the-shop.html`: 클로드의 지키는 가게 디자인 캔버스 원본.
-- `/challenge.html`: 기존 플레이룸 챌린지.
-- `/showroom.html`: 기존 3종 비교 쇼룸.
+| 경로 | 내용 |
+|---|---|
+| `/` (`index.html`) | **심해 전초기지** — 새 첫 화면 |
+| `/outpost.html` | 같은 게임의 별도 경로(첫 화면과 동일) |
+| `/abyss-diver-v2.html` | 이전 첫 화면이던 아비스 다이버 v2 보관본 |
+| `/guard-the-shop.html` | 지키는 가게 디자인 캔버스 원본 |
+| `/challenge.html` | 플레이룸 챌린지 |
+| `/showroom.html` | 3종 비교 쇼룸 |
 
-아비스 다이버는 브라우저에 진행을 저장합니다. Claude 사이트와 GitHub Pages는 출처가 달라 기존 Claude 사이트의 저장 기록이 자동 이전되지는 않습니다. 광고 버튼은 실제 광고 없이 보상을 체험하는 프로토타입 기능입니다.
+### 무엇을 하는 게임인가
 
-추가 방치형 4종(빌딩 킹·작은 숲·끝없는 던전·별빛 채굴단)은 당시 작업이 중단되어 이번 복구에 포함되지 않았습니다.
+- **안전한 건설 단계**에는 시간 제한이 없습니다. 대신 웨이브마다 **유한한 잔해 리저브**가 배정되어, 기다린다고 무한히 성장할 수 없습니다. 남은 양은 상단 리본의 막대로 항상 보입니다.
+- 잠수정을 직접 몰아 인양·교전할 수 있고, **소나 충격파**와 **긴급 용접** 두 액티브에는 정밀 판정 게이지가 있습니다. 조작은 선택이지 강제가 아닙니다.
+- 건설은 **칩 선택 → 타일 탭(고스트) → 확정** 2단계입니다. 확정 전에는 자원이 줄지 않고, 사거리·비용·봉쇄 경고를 먼저 봅니다.
+- 실패해도 캠페인을 처음부터 하지 않습니다. **같은 웨이브를 재시도**하며 발견·연구·통찰은 유지됩니다.
+- 드론 역할과 격벽 자동 재건으로 풀린 잡무를 위임하고, 숨은 해금 3종은 메뉴가 아니라 행동으로 찾습니다.
 
-세 가지 게임에 도전하는 모바일 **플레이룸 챌린지**와 조작감·성장 연출을 비교하는 **쇼룸**입니다.
+진행은 브라우저 `localStorage`에 저장됩니다(키: `outpost-run-v1`, `outpost-settings-v1`, `outpost-saved-at-v1`). 저장 형식이 깨져 있으면 새 캠페인으로 시작하고 플레이를 막지 않습니다. 서버·계정·광고·결제는 없습니다.
 
-## 현황
+## 이전 현황(챌린지·쇼룸)
+
 
 TypeScript + Phaser 3 + Vite로 구현하고 Capacitor로 Android에 패키징하는 프로토타입입니다.
 
-- `/` (`index.html`): 세로 화면 챌린지, 룬 조합, 단계별 도전, 공간 꾸미기, 성취·친구 기록·설정
+- `/challenge.html`: 세로 화면 챌린지, 룬 조합, 단계별 도전, 공간 꾸미기, 성취·친구 기록·설정
 - `/showroom.html`: 아래 세 게임의 기본 조작과 성장 모습을 비교하는 쇼룸
 
 - **작은 성채**: 타워 3종, 강화, 광역 공격·둔화, 5웨이브 방어
@@ -39,7 +48,7 @@ npm ci
 npm run dev
 ```
 
-`http://127.0.0.1:5197`에서 모바일 챌린지, `http://127.0.0.1:5197/showroom.html`에서 쇼룸을 엽니다. 다른 프로젝트의 개발 서버와 혼동하지 않도록 5197 포트를 고정합니다. 같은 Wi-Fi의 휴대폰은 터미널에 표시된 Network 주소로 접속할 수 있습니다. 방화벽 설정에 따라 접근이 제한될 수 있습니다.
+`http://127.0.0.1:5197`에서 심해 전초기지, `/outpost.html`·`/challenge.html`·`/showroom.html`에서 나머지 경로를 엽니다. 다른 프로젝트의 개발 서버와 혼동하지 않도록 5197 포트를 고정합니다. 같은 Wi-Fi의 휴대폰은 터미널에 표시된 Network 주소로 접속할 수 있습니다. 방화벽 설정에 따라 접근이 제한될 수 있습니다.
 
 ```sh
 npm run check
@@ -48,11 +57,11 @@ npm run build
 npm run preview
 ```
 
-`check`는 TypeScript strict 검사, `test`는 `tests/*.test.mjs` 실행, `build`는 타입 검사 후 두 HTML 엔트리를 `dist/`에 생성합니다. `preview`는 빌드 결과를 제공하며 접속 주소는 터미널에 표시됩니다. 두 엔트리가 Phaser 청크를 공유합니다. Phaser 엔진 자체가 약 1.21MB(압축 전)이므로 Vite의 청크 경고 기준을 1,300kB로 설정했습니다. 이는 다운로드 크기를 줄이는 최적화가 아니라 알려진 엔진 크기를 반영한 경고 기준입니다.
+`check`는 TypeScript strict 검사, `test`는 `tests/*.test.mjs` 실행, `build`는 타입 검사 후 네 HTML 엔트리(`index`·`outpost`·`challenge`·`showroom`)를 `dist/`에 생성합니다. `preview`는 빌드 결과를 제공하며 접속 주소는 터미널에 표시됩니다. 챌린지와 쇼룸 두 엔트리가 Phaser 청크를 공유합니다. 심해 전초기지는 Phaser를 쓰지 않고 순수 Canvas 2D로 그립니다. Phaser 엔진 자체가 약 1.21MB(압축 전)이므로 Vite의 청크 경고 기준을 1,300kB로 설정했습니다. 이는 다운로드 크기를 줄이는 최적화가 아니라 알려진 엔진 크기를 반영한 경고 기준입니다.
 
 ## GitHub Pages
 
-공개 주소: https://hee882.github.io/game-builder/ (쇼룸: https://hee882.github.io/game-builder/showroom.html).
+공개 주소: https://hee882.github.io/game-builder/ (쇼룸: https://hee882.github.io/game-builder/showroom.html, 보관본: https://hee882.github.io/game-builder/abyss-diver-v2.html).
 
 `main`에 push하면 `.github/workflows/pages.yml`이 Node.js 24에서 의존성 설치, 테스트, 타입 검사와 빌드 후 GitHub Pages로 배포합니다. GitHub Actions에서 수동 실행할 수도 있습니다.
 
@@ -87,9 +96,17 @@ APK는 `android/app/build/outputs/apk/debug/`에 생성됩니다. 웹 동기화 
 ## 구조
 
 ```
-index.html          # 모바일 챌린지 엔트리
+index.html          # 심해 전초기지 엔트리(첫 화면)
+outpost.html        # 심해 전초기지 별도 경로
+challenge.html      # 모바일 챌린지 엔트리
 showroom.html       # 비교 쇼룸 엔트리
-vite.config.ts      # 두 엔트리 빌드, Phaser 공유 청크
+src/outpost/        # 심해 전초기지 — Phaser 미사용, 순수 Canvas 2D
+  contract.ts        # 동결된 타입 계약(명령·뷰·이벤트)
+  content.ts         # 건물·적·웨이브·경제 테이블
+  sim.ts / path.ts / save.ts   # 순수 시뮬레이션
+  renderer.ts / layout.ts      # Canvas 2D 렌더러
+  hud.ts / format.ts / main.ts / outpost.css  # DOM 셸
+vite.config.ts      # 네 엔트리 빌드, Phaser 공유 청크(챌린지·쇼룸만)
 capacitor.config.ts # 앱 ID, 이름, 웹 빌드 경로(dist)
 src/
   mobile-main.ts     # 챌린지 UI·입력·Capacitor 연동
