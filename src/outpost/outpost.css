@@ -60,9 +60,9 @@ body {
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'bar' 'world' 'dock';
+  grid-template-areas: 'bar' 'topinfo' 'world' 'dock';
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
@@ -113,7 +113,7 @@ body {
 @media (min-width: 900px) {
   .op {
     grid-template-columns: minmax(0, 1fr) var(--rail-w);
-    grid-template-areas: 'bar bar' 'world rail' 'dock rail';
+    grid-template-areas: 'bar bar' 'topinfo rail' 'world rail' 'dock rail';
     column-gap: 24px;
     padding-right: calc(24px + env(safe-area-inset-right));
   }
@@ -133,15 +133,66 @@ body {
     min-height: 64px;
   }
 
-  .op-dock [data-op='build-strip'] {
-    display: none;
+  /* 데스크톱 예고·안내는 월드 폭 전체를 쓰지 않는다 */
+  .op-topinfo {
+    max-width: 720px;
   }
 }
 
-@media (max-height: 640px) {
+/* 좁은 폰: 리본 셀 다섯 개가 360px 안에 들어가야 한다 */
+@media (max-width: 400px) {
+  .op-bar {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .op-stat {
+    min-width: 44px;
+  }
+
+  .op-salvage {
+    min-width: 76px;
+  }
+}
+
+/* 짧은 화면: 예고·안내·독을 눌러 타일 크기를 지킨다 */
+@media (max-height: 700px) {
   .op {
     --bar-h: 44px;
     --dock-h: 64px;
+  }
+
+  .op-topinfo {
+    gap: 2px;
+    padding-top: 4px;
+  }
+
+  .op-threat {
+    padding: 3px 8px;
+  }
+
+  .op-threat div {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .op-threat b,
+  .op-threat span {
+    display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .op-prompt {
+    padding: 3px 8px;
+  }
+
+  .op-chip {
+    min-height: 44px;
+    padding: 2px 8px;
   }
 }
 
@@ -355,9 +406,18 @@ body {
 
 [data-op='start-wave'] {
   flex: 2 1 0;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+[data-op='start-wave'] em {
+  font-style: normal;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--amber);
 }
 
 .op-row[data-grow='true'] > * {
@@ -367,8 +427,21 @@ body {
 .op-ability {
   position: relative;
   flex: 1;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 6px 7px;
   min-height: var(--tap);
   overflow: hidden;
+  line-height: 1.15;
+}
+
+/* 이름은 최대 두 줄. 쿨다운 숫자는 이름 아래 고정 — 겹치지 않는다 */
+.op-ability > span {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  text-align: center;
+  word-break: keep-all;
 }
 
 .op-ability u {
@@ -387,11 +460,10 @@ body {
 }
 
 .op-ability em {
-  position: absolute;
-  top: 2px;
-  right: 4px;
+  position: relative;
+  z-index: 1;
   font-style: normal;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--cyan);
   font-variant-numeric: tabular-nums;
 }
@@ -401,17 +473,16 @@ body {
   height: 5px;
 }
 
-/* 위협 예고와 다음 한 수는 월드 위에 띄운다 — 독 높이를 먹지 않아야
-   360×640에서도 타일 40px 하한이 지켜진다. 입력은 통과시킨다. */
+/* 위협 예고와 다음 한 수는 리본과 월드 사이에 «흐름»으로 둔다.
+   월드 위에 띄우면 분출구(0행)를 가려 위협의 출처가 보이지 않는다.
+   짧은 화면에서는 아래 압축 규칙이 높이를 줄인다. */
 .op-topinfo {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  top: 6px;
+  grid-area: topinfo;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  pointer-events: none;
+  padding: 6px 6px 0;
+  width: 100%;
 }
 
 .op-prompt {
@@ -437,10 +508,6 @@ body {
 
 .op-overlay > * {
   pointer-events: auto;
-}
-
-.op-overlay > .op-topinfo {
-  pointer-events: none;
 }
 
 .op-confirm {

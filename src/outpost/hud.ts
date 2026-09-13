@@ -211,7 +211,6 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
   threatText.append(threatTitle, threatAdviceNode);
   threat.append(threatBars, threatText);
   topInfo.append(threat, prompt);
-  overlay.prepend(topInfo);
   const buildStrip = el('div', 'op-strip', { 'data-op': 'build-strip', role: 'group', 'aria-label': '건설' });
   const context = el('div', 'op-panel op-hidden', { 'data-op': 'context' });
   const controlRow = el('div', 'op-row', { 'data-op': 'control-row' });
@@ -229,7 +228,9 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
   const sheetBody = el('div', 'op-list', { 'data-op': 'sheet-body' });
   sheet.append(sheetHead, sheetBody);
 
-  shell.append(bar, world, rail, dock, sheet);
+  // 예고·다음 한 수는 월드 «위»가 아니라 «앞»에 둔다. 오버레이로 띄우면 분출구가 있는 0행을 가려
+  // 위협의 출처가 보이지 않는다. 남는 세로 공간은 짧은 화면용 압축 스타일이 흡수한다.
+  shell.append(bar, topInfo, world, rail, dock, sheet);
   root.append(shell);
 
   /* ── 건설 칩 ── */
@@ -290,6 +291,9 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
     'data-primary': 'true',
     'aria-label': '웨이브 시작',
   });
+  const startLabel = el('b');
+  const startBonus = el('em', 'op-num op-hidden');
+  startBtn.append(startLabel, startBonus);
   const moveBtn = el('button', 'op-btn', {
     type: 'button',
     'data-op': 'mode-move',
@@ -835,10 +839,10 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
     const canStart = view.phase === 'build';
     setDisabled(startBtn, !canStart);
     const bonus = Math.max(0, ECONOMY.earlyBonusSeconds - view.wave.buildSeconds);
-    const label = view.wave.earlyBonusActive
-      ? `웨이브 ${view.wave.index} 시작 · 조기 +${formatSeconds(bonus)}`
-      : `웨이브 ${view.wave.index} 시작`;
-    setText(startBtn, canStart ? label : PHASE_LABELS[view.phase]);
+    // 보너스는 둘째 줄에 따로 둔다 — 한 줄에 붙이면 360px 폭에서 라벨이 잘린다.
+    setText(startLabel, canStart ? `웨이브 ${view.wave.index} 시작` : PHASE_LABELS[view.phase]);
+    setText(startBonus, `조기 +25% ${formatSeconds(bonus)}`);
+    setHidden(startBonus, !(canStart && view.wave.earlyBonusActive));
     setAttr(startBtn, 'data-early', view.wave.earlyBonusActive ? 'true' : 'false');
     setDisabled(moveBtn, view.sub.downedTicks > 0);
   }
