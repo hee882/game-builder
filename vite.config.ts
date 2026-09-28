@@ -12,6 +12,7 @@ export default defineConfig({
         outpost: 'outpost.html',
         challenge: 'challenge.html',
         showroom: 'showroom.html',
+        idle: 'idle.html',
       },
       output: { manualChunks: { phaser: ['phaser'] } },
     },
