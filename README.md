@@ -1,5 +1,21 @@
 # game-builder
 
+## 게임별 레포 (`services/`)
+
+개발 중인 게임은 게임마다 개별 레포로 분리되어 서브모듈로 연결된다.
+
+| 폴더 | 레포 | 게임 |
+|---|---|---|
+| `services/arctic-diner` | [hee882/arctic-diner](https://github.com/hee882/arctic-diner) (비공개) | 북극 사냥 식당 — 아이소메트릭 아케이드 타이쿤 |
+
+```bash
+git clone --recurse-submodules https://github.com/hee882/game-builder.git
+# 이미 받은 경우
+git submodule update --init
+```
+
+아래는 이 레포에 남아 있는 기존 쇼룸에 대한 설명이다.
+
 ## 현재 첫 화면: 심해 전초기지
 
 해구에 전초기지를 세우고 좁은 길목을 설계해 **8웨이브(2장)** 를 막아내는 한국어 모바일 우선 전략 방어 게임입니다. 기존 아비스 다이버를 대체합니다.
