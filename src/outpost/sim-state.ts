@@ -21,6 +21,7 @@ import {
   type TargetPolicy,
   type TechId,
   type TileIndex,
+  type WaveStartEconomy,
 } from './contract.ts';
 import {
   BUILDINGS,
@@ -190,6 +191,7 @@ export interface SimState {
   best: { wave: number; chapter: ChapterId; elapsed: number };
 
   waveStartBuildings: { tile: TileIndex; id: BuildingId; level: number }[];
+  waveStartEconomy: WaveStartEconomy | null;
   retryAttempts: number;
   destroyedWalls: TileIndex[];
   wallRebuildTimer: number;
@@ -324,6 +326,7 @@ export function createState(seed: number): SimState {
     perks: { startScrap: 0, subSpeed: 0, wallHp: 0 },
     best: { wave: 0, chapter: 1, elapsed: 0 },
     waveStartBuildings: [],
+    waveStartEconomy: null,
     retryAttempts: 0,
     destroyedWalls: [],
     wallRebuildTimer: 0,
@@ -473,6 +476,19 @@ export function upgradeCost(id: BuildingId, level: number): { scrap: number; bio
     scrap: Math.round(spec.cost.scrap * factor),
     biomass: Math.round(spec.cost.biomass * factor),
   };
+}
+
+/** 기본 건설비 + 지금 레벨까지의 강화비. 복원한 건물의 판매 환급이 실제 투입액과 같아야 한다. */
+export function investedCost(id: BuildingId, level: number): { scrap: number; biomass: number } {
+  const spec = BUILDINGS[id];
+  let scrap = spec.cost.scrap;
+  let biomass = spec.cost.biomass;
+  for (let from = 0; from < level; from++) {
+    const step = upgradeCost(id, from);
+    scrap += step.scrap;
+    biomass += step.biomass;
+  }
+  return { scrap, biomass };
 }
 
 /** 장갑 적용 후 실제 피해. 장갑이 전략을 삭제하지 않도록 하한을 둔다. */

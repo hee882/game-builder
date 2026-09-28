@@ -557,6 +557,16 @@ export interface RunSave {
   readonly flooded: readonly number[];
   readonly retryAttempts: number;
   readonly stats: SimStats;
+  /** 웨이브 시작 시점의 자원·코어·잔해. 웨이브 도중 저장은 이 값으로 되돌려야 판매 환급·수확이 복제되지 않는다. 구버전 저장은 null */
+  readonly waveStartEconomy: WaveStartEconomy | null;
+  /** 무피해 연속 웨이브 수. 저장하지 않으면 새로고침으로 발견 진행이 사라진다 */
+  readonly consecutiveFlawless: number;
+}
+
+export interface WaveStartEconomy {
+  readonly resources: Resources;
+  readonly coreHp: number;
+  readonly salvageRemaining: number;
 }
 
 /** SAVE_KEY_RUN 에 저장되는 단일 봉투. sim.serialize() 가 이 모양을 직렬화한다. */

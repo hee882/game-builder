@@ -25,6 +25,7 @@ import {
   type TargetPolicy,
   type TechId,
   type TileIndex,
+  type WaveStartEconomy,
 } from './contract.ts';
 import {
   BUILDING_IDS,
@@ -134,6 +135,20 @@ function parseStats(value: unknown): SimStats {
   };
 }
 
+function parseWaveStartEconomy(value: unknown): WaveStartEconomy | null {
+  if (!isRecord(value)) return null; // 구버전 저장 — 복원은 저장 시점 값으로 대체한다
+  const resources = own(value, 'resources');
+  if (!isRecord(resources)) return null;
+  return {
+    resources: {
+      scrap: num(own(resources, 'scrap'), 0, 0, 1e9),
+      biomass: num(own(resources, 'biomass'), 0, 0, 1e9),
+    },
+    coreHp: num(own(value, 'coreHp'), CORE.maxHp, 0, CORE.maxHp),
+    salvageRemaining: num(own(value, 'salvageRemaining'), 0, 0, 1e9),
+  };
+}
+
 function parseRun(value: unknown): RunSave | null {
   if (!isRecord(value)) return null;
   if (own(value, 'version') !== OUTPOST_SAVE_VERSION) return null;
@@ -223,6 +238,8 @@ function parseRun(value: unknown): RunSave | null {
     flooded,
     retryAttempts: int(own(value, 'retryAttempts'), 0, 0, 1e4),
     stats: parseStats(own(value, 'stats')),
+    waveStartEconomy: parseWaveStartEconomy(own(value, 'waveStartEconomy')),
+    consecutiveFlawless: int(own(value, 'consecutiveFlawless'), 0, 0, TOTAL_WAVES),
   };
 }
 

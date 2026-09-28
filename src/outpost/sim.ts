@@ -98,6 +98,7 @@ import {
   ensureFields,
   hasWreckNeighbor,
   inBounds,
+  investedCost,
   isBuildableTerrain,
   loadChapter,
   markFieldDirty,
@@ -769,6 +770,10 @@ export const createSim = (options: SimOptions): OutpostSim => {
         flooded: [...state.flooded],
         retryAttempts: state.retryAttempts,
         stats: { ...state.stats },
+        waveStartEconomy: state.waveStartEconomy
+          ? { ...state.waveStartEconomy, resources: { ...state.waveStartEconomy.resources } }
+          : null,
+        consecutiveFlawless: state.consecutiveFlawless,
       },
     };
   }
@@ -852,9 +857,17 @@ function restore(state: SimState, save: OutpostSave): void {
   state.tick = run.tick;
   state.wave = run.wave;
   state.wavesCleared = Math.max(run.wave - 1, save.meta.best.wave);
-  state.scrap = run.resources.scrap;
-  state.biomass = run.resources.biomass;
-  state.coreHp = run.coreHp;
+  // 웨이브 도중 저장은 그 웨이브 시작 상태로 복귀한다(보상 중복·세이브 스컴 방지).
+  // 건물만 되돌리고 자원을 남기면 «판매 → 새로고침»으로 환급이 복제된다.
+  const restoreFromSnapshot = run.phase === 'wave';
+  const economy = restoreFromSnapshot ? run.waveStartEconomy : null;
+  state.scrap = economy?.resources.scrap ?? run.resources.scrap;
+  state.biomass = economy?.resources.biomass ?? run.resources.biomass;
+  state.coreHp = economy?.coreHp ?? run.coreHp;
+  state.waveStartEconomy = run.waveStartEconomy
+    ? { ...run.waveStartEconomy, resources: { ...run.waveStartEconomy.resources } }
+    : null;
+  state.consecutiveFlawless = run.consecutiveFlawless;
   state.researched = new Set(run.researched);
   state.automation = { ...run.automation };
   state.retryAttempts = run.retryAttempts;
@@ -862,15 +875,13 @@ function restore(state: SimState, save: OutpostSave): void {
   for (let tile = 0; tile < TILE_COUNT; tile++) state.flooded[tile] = run.flooded[tile] ?? 0;
   state.waveStartBuildings = run.waveStartBuildings.map((entry) => ({ ...entry }));
 
-  // 웨이브 도중 저장은 그 웨이브 시작 상태로 복귀한다(보상 중복·세이브 스컴 방지).
-  const restoreFromSnapshot = run.phase === 'wave';
   const source = restoreFromSnapshot
     ? run.waveStartBuildings.map((entry) => ({ ...entry, hp: Number.POSITIVE_INFINITY, policy: 'nearest' as TargetPolicy }))
     : run.buildings;
   for (const entry of source) {
     if (state.flooded[entry.tile] > 0) continue;
-    const spec = BUILDINGS[entry.id];
     const maxHp = buildingMaxHp(state, entry.id, entry.level);
+    const invested = investedCost(entry.id, entry.level);
     state.buildings.set(entry.tile, {
       tile: entry.tile,
       id: entry.id,
@@ -882,8 +893,8 @@ function restore(state: SimState, save: OutpostSave): void {
       aim: 0,
       policy: entry.policy ?? 'nearest',
       onThermal: state.terrain[entry.tile] === TERRAIN.thermal,
-      investedScrap: spec.cost.scrap * (entry.level + 1),
-      investedBiomass: spec.cost.biomass * (entry.level + 1),
+      investedScrap: invested.scrap,
+      investedBiomass: invested.biomass,
     });
     if (entry.id === 'bulkhead') state.walls[entry.tile] = 1;
     else state.structures[entry.tile] = 1;
@@ -893,7 +904,7 @@ function restore(state: SimState, save: OutpostSave): void {
   const spec = waveSpec(state.wave);
   state.reserveTotal = spec.salvageReserve;
   // 소진된 리저브는 재충전되지 않는다 — 저장된 잔량을 그대로 쓴다.
-  state.reserveRemaining = Math.min(run.salvageRemaining, spec.salvageReserve);
+  state.reserveRemaining = Math.min(economy?.salvageRemaining ?? run.salvageRemaining, spec.salvageReserve);
   state.harvestedThisCycle = Math.max(0, spec.salvageReserve - state.reserveRemaining);
   state.reserveExhaustedNotified = state.reserveRemaining <= 0;
   state.spawnInterval = spec.spawnInterval;
