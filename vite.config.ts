@@ -13,6 +13,7 @@ export default defineConfig({
         challenge: 'challenge.html',
         showroom: 'showroom.html',
         idle: 'idle.html',
+        arctic: 'arctic.html',
       },
       output: { manualChunks: { phaser: ['phaser'] } },
     },
