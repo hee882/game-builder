@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OUTPOST_SAVE_VERSION, SAVE_KEY_RUN, SAVE_KEY_SETTINGS, TILE_COUNT } from '../src/outpost/contract.ts';
 import { BUILDING_IDS, TERRAIN, WAVES, chapterSpec, parseLayout } from '../src/outpost/content.ts';
-import { freshMeta, freshSave, parseSave, serializeSave } from '../src/outpost/save.ts';
+import { freshMeta, freshSave, parseSave, serializeSave, withoutRun } from '../src/outpost/save.ts';
 import { createSim } from '../src/outpost/sim.ts';
 
 const T = (x, y) => y * 9 + x;
@@ -322,4 +322,21 @@ test('무피해 연속 기록은 저장을 건너뛰지 않는다', () => {
   data.run.consecutiveFlawless = 1;
   const resumed = createSim({ seed: 13, save: JSON.stringify(data) });
   assert.equal(parseSave(resumed.serialize()).run.consecutiveFlawless, 1);
+});
+
+test('캠페인 초기화는 런만 버리고 통찰·퍼크·발견을 이어 간다', () => {
+  const data = JSON.parse(createSim({ seed: 13 }).serialize());
+  data.meta.insight = 12;
+  data.meta.perks.subSpeed = 2;
+  data.meta.discovered = ['ventResonance'];
+  const carried = parseSave(withoutRun(JSON.stringify(data)));
+  assert.equal(carried.run, null);
+  assert.equal(carried.meta.insight, 12);
+  assert.equal(carried.meta.perks.subSpeed, 2);
+  assert.deepEqual(carried.meta.discovered, ['ventResonance']);
+
+  const fresh = createSim({ seed: 99, save: withoutRun(JSON.stringify(data)) }).view();
+  assert.equal(fresh.wave.index, 1);
+  assert.equal(fresh.insight, 12);
+  assert.deepEqual([...fresh.discovered], ['ventResonance']);
 });

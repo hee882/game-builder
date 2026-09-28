@@ -13,6 +13,7 @@ import { createRenderer } from './renderer.ts';
 import { createSim } from './sim.ts';
 import { ECONOMY } from './content.ts';
 import { SAVE_KEY_RUN } from './contract.ts';
+import { withoutRun } from './save.ts';
 import type {
   AbilityId,
   BuildingId,
@@ -465,10 +466,12 @@ export function boot(root: HTMLElement): () => void {
     writeLocal(SAVED_AT_KEY, String(Date.now()));
   }
 
+  /** 런만 새로 시작한다. 설정 화면이 «통찰과 발견은 유지됩니다»라고 약속한다. */
   function restart(): void {
-    removeLocal(SAVE_KEY_RUN);
+    const metaOnly = withoutRun(sim.serialize());
+    writeLocal(SAVE_KEY_RUN, metaOnly);
     removeLocal(SAVED_AT_KEY);
-    sim = createSim({ seed: Date.now() % 2147483647, save: null, offlineSeconds: 0 });
+    sim = createSim({ seed: Date.now() % 2147483647, save: metaOnly, offlineSeconds: 0 });
     clearGhost();
     setMode('select');
     hud.setSelected(null);

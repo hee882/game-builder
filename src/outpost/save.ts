@@ -247,6 +247,11 @@ export function serializeSave(save: OutpostSave): string {
   return JSON.stringify({ version: OUTPOST_SAVE_VERSION, meta: save.meta, run: save.run });
 }
 
+/** 캠페인 초기화용: 런만 버리고 메타(통찰·퍼크·발견·최고 기록)는 이어 간다. */
+export function withoutRun(raw: string | null): string {
+  return serializeSave({ ...parseSave(raw), run: null });
+}
+
 /** 어떤 입력에도 예외를 던지지 않는다. 손상 시 기본값으로 수렴한다. */
 export function parseSave(raw: string | null): OutpostSave {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > 2_000_000) return freshSave();
