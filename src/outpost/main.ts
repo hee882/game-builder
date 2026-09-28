@@ -254,6 +254,14 @@ export function boot(root: HTMLElement): () => void {
   let selectedBuilding: BuildingId | null = null;
   let aiming: AbilityId | null = null;
   let ghostTile: TileIndex | null = null;
+  let userPaused = false;
+  let sheetOpen = false;
+  const paused = (): boolean => userPaused || sheetOpen;
+
+  function setUserPaused(next: boolean): void {
+    userPaused = next;
+    hud.setPaused(paused());
+  }
 
   function applySettings(next: OutpostSettings): void {
     renderer.setReducedMotion(next.reducedMotion);
@@ -333,6 +341,11 @@ export function boot(root: HTMLElement): () => void {
         if (settings.sound) audio.resume();
       } else if (detail.kind === 'restart') {
         restart();
+      } else if (detail.kind === 'togglePause') {
+        setUserPaused(!userPaused);
+      } else if (detail.kind === 'sheet') {
+        sheetOpen = detail.open;
+        hud.setPaused(paused());
       }
     },
     { signal },
@@ -434,6 +447,8 @@ export function boot(root: HTMLElement): () => void {
         setMode('aim', ability);
       } else if (event.key === 'Enter' && ghostTile !== null) {
         confirmBuild();
+      } else if (event.key === 'p' || event.key === 'P') {
+        setUserPaused(!userPaused);
       }
     },
     { signal },
@@ -503,7 +518,7 @@ export function boot(root: HTMLElement): () => void {
       sim.issue({ kind: 'moveSub', to: pendingMove });
       pendingMove = null;
     }
-    sim.advance(dt);
+    if (!paused()) sim.advance(dt);
     const events = sim.drainEvents(); // 프레임당 정확히 1회
     const view = sim.view();
 

@@ -404,6 +404,28 @@ body {
   min-width: 0;
 }
 
+[data-op='control-row'] > [data-op='pause'] {
+  flex: 0 0 var(--tap);
+  padding: 0;
+}
+
+/* 시뮬이 멈춘 것을 월드 위에서 바로 알 수 있어야 한다 — 입력은 막지 않는다 */
+.op[data-paused='true'] .op-world::after {
+  content: '일시정지';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  background: rgba(7, 19, 32, 0.86);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 [data-op='start-wave'] {
   flex: 2 1 0;
   flex-direction: column;
