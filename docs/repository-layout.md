@@ -8,7 +8,7 @@ reusable packages.
 
 ```text
 game-builder/                         # common base
-arctic-diner/                         # independent game repository
+penguin-gourmet-club/                 # independent game repository
 └── vendor/game-builder/              # pinned game-builder commit
 ```
 

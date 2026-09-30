@@ -143,7 +143,7 @@ game-builder/                   # 공개 공통 기반 레포
 ├── src/, *.html                # 기존 쇼룸·샘플 (호환용)
 └── services/                   # 로컬 게임 체크아웃 자리, Git에는 포함하지 않음
 
-arctic-diner/                   # 독립 게임 레포 (운영 주체)
+penguin-gourmet-club/           # 독립 게임 레포 (운영 주체)
 └── vendor/game-builder/        # game-builder의 고정 커밋을 가리키는 서브모듈
 ```
 
