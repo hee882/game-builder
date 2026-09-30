@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OUTPOST_SAVE_VERSION, SAVE_KEY_RUN, SAVE_KEY_SETTINGS, TILE_COUNT } from '../src/outpost/contract.ts';
 import { BUILDING_IDS, TERRAIN, WAVES, chapterSpec, parseLayout } from '../src/outpost/content.ts';
-import { freshMeta, freshSave, parseSave, serializeSave } from '../src/outpost/save.ts';
+import { freshMeta, freshSave, parseSave, serializeSave, withoutRun } from '../src/outpost/save.ts';
 import { createSim } from '../src/outpost/sim.ts';
 
 const T = (x, y) => y * 9 + x;
@@ -265,4 +265,78 @@ test('serializeSave/parseSave 는 대칭이고 과대 입력을 거부한다', (
   assert.deepEqual(parsed.meta.discovered, ['flawlessPair']);
   assert.equal(parsed.run, null);
   assert.equal(parseSave('x'.repeat(2_000_001)).run, null);
+});
+
+test('웨이브 도중 판매 → 새로고침으로 환급을 복제할 수 없다', () => {
+  const sim = createSim({ seed: 13 });
+  harvest(sim);
+  sim.issue({ kind: 'build', tile: HARPOON_TILE, building: 'harpoon' });
+  sim.issue({ kind: 'build', tile: T(5, 8), building: 'harpoon' });
+  const atStart = { ...sim.view().resources };
+  sim.issue({ kind: 'startWave' });
+  for (let i = 0; i < 30 * 3; i++) sim.step();
+  assert.deepEqual(sim.issue({ kind: 'sell', tile: HARPOON_TILE }), { ok: true });
+  assert.ok(sim.view().resources.scrap > atStart.scrap, '판매 환급을 받았다');
+
+  const resumed = createSim({ seed: 13, save: sim.serialize() });
+  const view = resumed.view();
+  assert.equal(view.buildingCount, 2, '판 건물이 웨이브 시작 배치로 돌아온다');
+  assert.equal(view.resources.scrap, atStart.scrap, '환급받은 고철은 사라진다');
+  assert.equal(view.resources.biomass, atStart.biomass);
+});
+
+test('구버전 저장(waveStartEconomy 없음)도 예외 없이 복원된다', () => {
+  const sim = createSim({ seed: 13 });
+  harvest(sim);
+  sim.issue({ kind: 'build', tile: HARPOON_TILE, building: 'harpoon' });
+  sim.issue({ kind: 'startWave' });
+  for (let i = 0; i < 30 * 3; i++) sim.step();
+  const legacy = JSON.parse(sim.serialize());
+  delete legacy.run.waveStartEconomy;
+  delete legacy.run.consecutiveFlawless;
+  const parsed = parseSave(JSON.stringify(legacy));
+  assert.equal(parsed.run.waveStartEconomy, null);
+  assert.equal(parsed.run.consecutiveFlawless, 0);
+  const resumed = createSim({ seed: 13, save: JSON.stringify(legacy) });
+  assert.equal(resumed.view().phase, 'build');
+});
+
+test('강화한 건물을 복원해도 판매 환급은 실제 투입액 기준이다', () => {
+  const sim = createSim({ seed: 13 });
+  harvest(sim);
+  sim.issue({ kind: 'build', tile: HARPOON_TILE, building: 'harpoon' });
+  assert.deepEqual(sim.issue({ kind: 'upgrade', tile: HARPOON_TILE }), { ok: true });
+  const resumed = createSim({ seed: 13, save: sim.serialize() });
+
+  const before = sim.view().resources.scrap;
+  sim.issue({ kind: 'sell', tile: HARPOON_TILE });
+  const refund = sim.view().resources.scrap - before;
+  const resumedBefore = resumed.view().resources.scrap;
+  resumed.issue({ kind: 'sell', tile: HARPOON_TILE });
+  assert.equal(resumed.view().resources.scrap - resumedBefore, refund);
+});
+
+test('무피해 연속 기록은 저장을 건너뛰지 않는다', () => {
+  const sim = createSim({ seed: 13 });
+  const data = JSON.parse(sim.serialize());
+  data.run.consecutiveFlawless = 1;
+  const resumed = createSim({ seed: 13, save: JSON.stringify(data) });
+  assert.equal(parseSave(resumed.serialize()).run.consecutiveFlawless, 1);
+});
+
+test('캠페인 초기화는 런만 버리고 통찰·퍼크·발견을 이어 간다', () => {
+  const data = JSON.parse(createSim({ seed: 13 }).serialize());
+  data.meta.insight = 12;
+  data.meta.perks.subSpeed = 2;
+  data.meta.discovered = ['ventResonance'];
+  const carried = parseSave(withoutRun(JSON.stringify(data)));
+  assert.equal(carried.run, null);
+  assert.equal(carried.meta.insight, 12);
+  assert.equal(carried.meta.perks.subSpeed, 2);
+  assert.deepEqual(carried.meta.discovered, ['ventResonance']);
+
+  const fresh = createSim({ seed: 99, save: withoutRun(JSON.stringify(data)) }).view();
+  assert.equal(fresh.wave.index, 1);
+  assert.equal(fresh.insight, 12);
+  assert.deepEqual([...fresh.discovered], ['ventResonance']);
 });

@@ -30,6 +30,7 @@ import {
   collectorRate,
   droneCount,
   ensureFields,
+  investedCost,
   loadChapter,
   markFieldDirty,
   refreshUnlocks,
@@ -339,6 +340,11 @@ export function beginWave(state: SimState): void {
     id: building.id,
     level: building.level,
   }));
+  state.waveStartEconomy = {
+    resources: { scrap: state.scrap, biomass: state.biomass },
+    coreHp: state.coreHp,
+    salvageRemaining: state.reserveRemaining,
+  };
   state.events.push({ kind: 'waveStart', index: state.wave });
 }
 
@@ -448,7 +454,7 @@ export function retryWave(state: SimState): void {
   for (const snapshot of state.waveStartBuildings) {
     if (state.flooded[snapshot.tile] > 0) continue;
     const maxHp = buildingMaxHp(state, snapshot.id, snapshot.level);
-    const spec = BUILDINGS[snapshot.id];
+    const invested = investedCost(snapshot.id, snapshot.level);
     state.buildings.set(snapshot.tile, {
       tile: snapshot.tile,
       id: snapshot.id,
@@ -460,8 +466,8 @@ export function retryWave(state: SimState): void {
       aim: 0,
       policy: 'nearest',
       onThermal: state.terrain[snapshot.tile] === TERRAIN.thermal,
-      investedScrap: spec.cost.scrap,
-      investedBiomass: spec.cost.biomass,
+      investedScrap: invested.scrap,
+      investedBiomass: invested.biomass,
     });
     if (snapshot.id === 'bulkhead') state.walls[snapshot.tile] = 1;
     else state.structures[snapshot.tile] = 1;
@@ -486,6 +492,7 @@ export function advanceChapter(state: SimState): void {
   state.coreHp = CORE.maxHp;
   state.retryAttempts = 0;
   state.waveStartBuildings = [];
+  state.waveStartEconomy = null;
   state.events.push({ kind: 'chapterEntered', chapter: 2 });
   startBuildPhase(state, LAST_WAVE_OF_CHAPTER1 + 1);
 }

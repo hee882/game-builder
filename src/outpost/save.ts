@@ -25,6 +25,7 @@ import {
   type TargetPolicy,
   type TechId,
   type TileIndex,
+  type WaveStartEconomy,
 } from './contract.ts';
 import {
   BUILDING_IDS,
@@ -134,6 +135,20 @@ function parseStats(value: unknown): SimStats {
   };
 }
 
+function parseWaveStartEconomy(value: unknown): WaveStartEconomy | null {
+  if (!isRecord(value)) return null; // 구버전 저장 — 복원은 저장 시점 값으로 대체한다
+  const resources = own(value, 'resources');
+  if (!isRecord(resources)) return null;
+  return {
+    resources: {
+      scrap: num(own(resources, 'scrap'), 0, 0, 1e9),
+      biomass: num(own(resources, 'biomass'), 0, 0, 1e9),
+    },
+    coreHp: num(own(value, 'coreHp'), CORE.maxHp, 0, CORE.maxHp),
+    salvageRemaining: num(own(value, 'salvageRemaining'), 0, 0, 1e9),
+  };
+}
+
 function parseRun(value: unknown): RunSave | null {
   if (!isRecord(value)) return null;
   if (own(value, 'version') !== OUTPOST_SAVE_VERSION) return null;
@@ -223,11 +238,18 @@ function parseRun(value: unknown): RunSave | null {
     flooded,
     retryAttempts: int(own(value, 'retryAttempts'), 0, 0, 1e4),
     stats: parseStats(own(value, 'stats')),
+    waveStartEconomy: parseWaveStartEconomy(own(value, 'waveStartEconomy')),
+    consecutiveFlawless: int(own(value, 'consecutiveFlawless'), 0, 0, TOTAL_WAVES),
   };
 }
 
 export function serializeSave(save: OutpostSave): string {
   return JSON.stringify({ version: OUTPOST_SAVE_VERSION, meta: save.meta, run: save.run });
+}
+
+/** 캠페인 초기화용: 런만 버리고 메타(통찰·퍼크·발견·최고 기록)는 이어 간다. */
+export function withoutRun(raw: string | null): string {
+  return serializeSave({ ...parseSave(raw), run: null });
 }
 
 /** 어떤 입력에도 예외를 던지지 않는다. 손상 시 기본값으로 수렴한다. */

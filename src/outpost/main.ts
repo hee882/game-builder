@@ -13,6 +13,7 @@ import { createRenderer } from './renderer.ts';
 import { createSim } from './sim.ts';
 import { ECONOMY } from './content.ts';
 import { SAVE_KEY_RUN } from './contract.ts';
+import { withoutRun } from './save.ts';
 import type {
   AbilityId,
   BuildingId,
@@ -253,6 +254,14 @@ export function boot(root: HTMLElement): () => void {
   let selectedBuilding: BuildingId | null = null;
   let aiming: AbilityId | null = null;
   let ghostTile: TileIndex | null = null;
+  let userPaused = false;
+  let sheetOpen = false;
+  const paused = (): boolean => userPaused || sheetOpen;
+
+  function setUserPaused(next: boolean): void {
+    userPaused = next;
+    hud.setPaused(paused());
+  }
 
   function applySettings(next: OutpostSettings): void {
     renderer.setReducedMotion(next.reducedMotion);
@@ -332,6 +341,11 @@ export function boot(root: HTMLElement): () => void {
         if (settings.sound) audio.resume();
       } else if (detail.kind === 'restart') {
         restart();
+      } else if (detail.kind === 'togglePause') {
+        setUserPaused(!userPaused);
+      } else if (detail.kind === 'sheet') {
+        sheetOpen = detail.open;
+        hud.setPaused(paused());
       }
     },
     { signal },
@@ -433,6 +447,8 @@ export function boot(root: HTMLElement): () => void {
         setMode('aim', ability);
       } else if (event.key === 'Enter' && ghostTile !== null) {
         confirmBuild();
+      } else if (event.key === 'p' || event.key === 'P') {
+        setUserPaused(!userPaused);
       }
     },
     { signal },
@@ -440,20 +456,23 @@ export function boot(root: HTMLElement): () => void {
 
   /* ── 리사이즈 ── */
   /**
-   * 캔버스 박스는 이미 상단 바·하단 독·safe-area를 제외한 월드 영역 그 자체다(grid 형제 요소).
+   * 월드 영역(.op-world)은 이미 상단 바·하단 독·safe-area를 제외한 grid 칸이다.
    * 그래서 인셋은 0이다 — HUD가 캔버스를 덮는 구조가 아니다. 고스트 콜아웃만 일시적으로 떠 있다.
+   * 캔버스가 아니라 월드 영역을 잰다: 렌더러가 캔버스에 px 크기를 고정하므로, 캔버스를 재면
+   * 예고 행·독이 자라 월드가 줄어도 캔버스가 줄지 않고 아래 행과 코어가 잘린다.
    */
   const NO_INSETS: ViewportInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+  const worldBox: HTMLElement = canvas.parentElement ?? canvas;
 
   function resize(): void {
-    const rect = canvas.getBoundingClientRect();
+    const rect = worldBox.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     renderer.resize(rect.width, rect.height, dpr, NO_INSETS);
   }
   window.addEventListener('resize', resize, { signal });
   window.addEventListener('orientationchange', resize, { signal });
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
-  if (observer) observer.observe(canvas);
+  if (observer) observer.observe(worldBox);
   resize();
 
   /* ── 저장 ── */
@@ -462,10 +481,12 @@ export function boot(root: HTMLElement): () => void {
     writeLocal(SAVED_AT_KEY, String(Date.now()));
   }
 
+  /** 런만 새로 시작한다. 설정 화면이 «통찰과 발견은 유지됩니다»라고 약속한다. */
   function restart(): void {
-    removeLocal(SAVE_KEY_RUN);
+    const metaOnly = withoutRun(sim.serialize());
+    writeLocal(SAVE_KEY_RUN, metaOnly);
     removeLocal(SAVED_AT_KEY);
-    sim = createSim({ seed: Date.now() % 2147483647, save: null, offlineSeconds: 0 });
+    sim = createSim({ seed: Date.now() % 2147483647, save: metaOnly, offlineSeconds: 0 });
     clearGhost();
     setMode('select');
     hud.setSelected(null);
@@ -497,7 +518,7 @@ export function boot(root: HTMLElement): () => void {
       sim.issue({ kind: 'moveSub', to: pendingMove });
       pendingMove = null;
     }
-    sim.advance(dt);
+    if (!paused()) sim.advance(dt);
     const events = sim.drainEvents(); // 프레임당 정확히 1회
     const view = sim.view();
 

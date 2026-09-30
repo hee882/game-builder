@@ -52,7 +52,10 @@ export type ShellDetail =
   | { readonly kind: 'confirmBuild' }
   | { readonly kind: 'cancelBuild' }
   | { readonly kind: 'settings'; readonly settings: OutpostSettings }
-  | { readonly kind: 'restart' };
+  | { readonly kind: 'restart' }
+  | { readonly kind: 'togglePause' }
+  /** 모바일 시트가 월드를 가리는 동안 시뮬을 멈추기 위해 셸에 알린다 */
+  | { readonly kind: 'sheet'; readonly open: boolean };
 
 export interface GhostInfo {
   readonly building: BuildingId;
@@ -66,6 +69,7 @@ export interface ShellHud extends OutpostHud {
   setGhost(info: GhostInfo | null): void;
   setSelected(tile: TileIndex | null): void;
   setSettings(settings: OutpostSettings): void;
+  setPaused(paused: boolean): void;
 }
 
 const BUILD_ORDER: readonly BuildingId[] = ['bulkhead', 'collector', 'harpoon', 'mortar', 'droneBay', 'resonator'];
@@ -303,7 +307,14 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
   moveBtn.textContent = '조타';
   const menuBtn = el('button', 'op-btn', { type: 'button', 'data-op': 'open-menu', 'aria-label': '패널 열기' });
   menuBtn.textContent = '패널';
-  actionRow.append(startBtn, moveBtn, menuBtn);
+  const pauseBtn = el('button', 'op-btn', {
+    type: 'button',
+    'data-op': 'pause',
+    'aria-pressed': 'false',
+    'aria-label': '일시정지',
+  });
+  pauseBtn.textContent = '⏸';
+  actionRow.append(startBtn, moveBtn, pauseBtn, menuBtn);
 
   startBtn.addEventListener('click', () => {
     const result = dispatch({ kind: 'startWave' });
@@ -313,6 +324,7 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
     const next = moveBtn.getAttribute('aria-pressed') === 'true' ? 'select' : 'move';
     emit({ kind: 'mode', mode: next });
   });
+  pauseBtn.addEventListener('click', () => emit({ kind: 'togglePause' }));
   confirmBtn.addEventListener('click', () => emit({ kind: 'confirmBuild' }));
   cancelBtn.addEventListener('click', () => emit({ kind: 'cancelBuild' }));
 
@@ -543,6 +555,7 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
   /* ── 패널 배치: 데스크톱은 레일, 모바일은 시트 ── */
   const desktop = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 900px)') : null;
   let activePanel: string | null = null;
+  let sheetWasOpen = false;
 
   function mountPanels(): void {
     const wide = desktop ? desktop.matches : false;
@@ -555,8 +568,13 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
         setHidden(node, key !== activePanel);
       }
     }
-    setHidden(sheet, (desktop ? desktop.matches : false) || activePanel === null);
+    const sheetOpen = !wide && activePanel !== null;
+    setHidden(sheet, !sheetOpen);
     setHidden(menuBtn, wide);
+    if (sheetOpen !== sheetWasOpen) {
+      sheetWasOpen = sheetOpen;
+      emit({ kind: 'sheet', open: sheetOpen });
+    }
   }
 
   function openPanel(key: string | null): void {
@@ -958,6 +976,12 @@ export function createHud(root: HTMLElement, dispatch: Dispatch): ShellHud {
     setSettings(next: OutpostSettings) {
       settings = next;
       renderSettings();
+    },
+    setPaused(paused: boolean) {
+      setAttr(pauseBtn, 'aria-pressed', paused ? 'true' : 'false');
+      setAttr(pauseBtn, 'aria-label', paused ? '재개' : '일시정지');
+      setText(pauseBtn, paused ? '▶' : '⏸');
+      setAttr(shell, 'data-paused', paused ? 'true' : null);
     },
     destroy,
   };
