@@ -1,5 +1,16 @@
 # game-builder
 
+## Repository boundary
+
+This repository is the common base. Each game is maintained in its own Git
+repository and consumes this repository through a one-way submodule at
+`vendor/game-builder`. Do not add game repositories back under this repository
+as submodules; local checkouts under `services/` are ignored for convenience.
+
+Use pull requests for both repositories: merge common changes into this
+repository's `main`, then update the consuming game's submodule pointer in a
+separate pull request. Vercel projects connect directly to game repositories.
+
 세 가지 게임의 조작감과 성장 연출을 비교하는 브라우저 쇼룸. 현재 구현은 `README.md` 참고.
 
 ## 스택

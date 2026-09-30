@@ -38,3 +38,8 @@ desktop.ini
 # Claude Code — 개인 설정 (공유 설정인 CLAUDE.md, .claude/settings.json은 커밋)
 .claude/settings.local.json
 .claude/CLAUDE.md
+
+# Local checkouts of independent game repositories. Each game owns its repo;
+# game-builder is consumed by those repos as a submodule.
+services/*
+!services/README.md
