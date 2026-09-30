@@ -1,0 +1,530 @@
+/* 꼬마 용사 키우기 — 모바일 세로 우선. 위: 전투 화면, 아래: 강화 목록.
+   숫자와 버튼은 크고 둥글게. 살 수 있는 버튼은 눈에 띄고, 못 사는 버튼은 한눈에 가라앉는다. */
+
+:root {
+  --bg: #1d1a33;
+  --panel: #2a2548;
+  --panel-2: #342d5a;
+  --line: #463d75;
+  --text: #fff8ec;
+  --dim: #b9b0d8;
+  --gold: #ffd84a;
+  --gold-deep: #f5a300;
+  --green: #5fe08a;
+  --red: #ff5a6a;
+  --violet: #b07cff;
+  --tap: 48px;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Jua', 'IBM Plex Sans KR', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ih-hidden {
+  display: none !important;
+}
+
+.ih-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.ih {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(220px, 46%) minmax(0, 1fr);
+  max-width: 560px;
+  margin: 0 auto;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* ───────────── 상단 ───────────── */
+
+.ih-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: linear-gradient(180deg, #2f2757, #241f45);
+  border-bottom: 2px solid var(--line);
+}
+
+.ih-gold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ih-gold b {
+  font-size: 26px;
+  color: var(--gold);
+  text-shadow: 0 2px 0 #8a5a00;
+  white-space: nowrap;
+}
+
+.ih-coin {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff2a8 0 25%, var(--gold) 26% 60%, var(--gold-deep) 61%);
+  box-shadow: 0 2px 0 #8a5a00;
+}
+
+.ih-coin.ih-bump {
+  animation: ih-bump 0.25s ease-out;
+}
+
+@keyframes ih-bump {
+  40% {
+    transform: scale(1.35);
+  }
+}
+
+.ih-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+}
+
+.ih-stage b {
+  font-size: 18px;
+}
+
+.ih-stage span {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.ih-pips {
+  display: flex;
+  gap: 3px;
+}
+
+.ih-pips i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #4a4275;
+}
+
+.ih-pips i.on {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.ih-bossbar {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: #4a2233;
+  overflow: hidden;
+}
+
+.ih-bossbar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), #ff9a6a);
+}
+
+.ih-stones {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 52px);
+  left: 12px;
+  z-index: 2;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(40, 20, 70, 0.8);
+  color: #e6d4ff;
+  font-size: 13px;
+}
+
+/* ───────────── 전투 화면 ───────────── */
+
+.ih-world {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ih-world canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: manipulation;
+}
+
+.ih-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.ih-controls > * {
+  pointer-events: auto;
+}
+
+/* 용사 발밑을 가리지 않도록 전투 화면 오른쪽 위에 둔다 */
+.ih-autos {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.ih-auto {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(20, 16, 40, 0.6);
+  font-size: 13px;
+}
+
+.ih-auto.on {
+  border-color: var(--green);
+  background: rgba(30, 90, 60, 0.85);
+}
+
+.ih-auto.on::before {
+  content: '● ';
+  color: var(--green);
+}
+
+.ih-boss {
+  min-height: var(--tap);
+  padding: 0 16px;
+  border: 3px solid #ffb3bb;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff6a7a, #d8324a);
+  font-size: 17px;
+  box-shadow: 0 4px 0 #8a1a2a;
+  animation: ih-wiggle 1.4s ease-in-out infinite;
+}
+
+@keyframes ih-wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  10% {
+    transform: rotate(-4deg) scale(1.05);
+  }
+  20% {
+    transform: rotate(4deg) scale(1.05);
+  }
+  30% {
+    transform: rotate(0);
+  }
+}
+
+.ih-skill {
+  --cd: 0;
+  position: relative;
+  width: 66px;
+  height: 66px;
+  flex: none;
+  border: 3px solid #fff3a0;
+  border-radius: 50%;
+  background: conic-gradient(rgba(10, 8, 25, 0.72) calc(var(--cd) * 360deg), transparent 0), radial-gradient(circle, #ffe45c, #f59b00);
+  box-shadow: 0 4px 0 #8a5a00;
+  font-size: 30px;
+  display: grid;
+  place-items: center;
+}
+
+.ih-skill:not(.ready) span {
+  opacity: 0.25;
+}
+
+.ih-skill em {
+  position: absolute;
+  font-style: normal;
+  font-size: 22px;
+  text-shadow: 0 2px 0 #000;
+}
+
+.ih-skill.ready {
+  animation: ih-glow 1.2s ease-in-out infinite;
+}
+
+@keyframes ih-glow {
+  50% {
+    box-shadow: 0 4px 0 #8a5a00, 0 0 22px 6px rgba(255, 228, 92, 0.7);
+  }
+}
+
+.ih-banner {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 220px;
+  padding: 10px 20px;
+  border: 3px solid var(--gold);
+  border-radius: 18px;
+  background: rgba(30, 20, 60, 0.9);
+  text-align: center;
+  pointer-events: none;
+}
+
+.ih-banner b {
+  font-size: 24px;
+  color: var(--gold);
+}
+
+.ih-banner span {
+  font-size: 14px;
+}
+
+.ih-banner-in {
+  animation: ih-banner 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@keyframes ih-banner {
+  from {
+    transform: translateX(-50%) scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* ───────────── 강화 패널 ───────────── */
+
+.ih-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-top: 3px solid var(--line);
+  border-radius: 18px 18px 0 0;
+}
+
+.ih-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.ih-dps {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ih-amounts {
+  display: flex;
+  flex: none;
+  border-radius: 999px;
+  background: #1f1a3a;
+  padding: 3px;
+}
+
+.ih-amounts button {
+  min-width: 48px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.ih-amounts button.on {
+  background: var(--gold);
+  color: #3a2600;
+}
+
+.ih-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ih-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 2px solid transparent;
+}
+
+.ih-row.locked {
+  opacity: 0.55;
+}
+
+.ih-row.evolve-soon {
+  border-color: var(--gold);
+}
+
+.ih-row.ih-pop {
+  animation: ih-pop 0.3s ease-out;
+}
+
+@keyframes ih-pop {
+  40% {
+    background: #4d4386;
+    transform: scale(1.02);
+  }
+}
+
+.ih-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #221d40;
+  font-size: 24px;
+}
+
+.ih-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ih-info b {
+  font-size: 16px;
+}
+
+.ih-lv {
+  color: var(--gold);
+  font-size: 13px;
+}
+
+.ih-info span {
+  font-size: 12px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ih-buy {
+  min-width: 92px;
+  min-height: var(--tap);
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #7ef0a0, #34b865);
+  color: #0f3a1d;
+  font-size: 15px;
+  box-shadow: 0 4px 0 #1f7a40;
+}
+
+.ih-buy:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #1f7a40;
+}
+
+.ih-buy:disabled {
+  background: #4a4275;
+  color: #9d95c4;
+  box-shadow: 0 4px 0 #2f2956;
+  cursor: default;
+}
+
+.ih-lock {
+  min-width: 92px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.ih-rebirth .ih-buy:not(:disabled) {
+  background: linear-gradient(180deg, #d4b0ff, #8a4fe8);
+  color: #fff;
+  box-shadow: 0 4px 0 #4f2a99;
+}
+
+/* ───────────── 방치 보상 ───────────── */
+
+.ih-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 8, 25, 0.7);
+}
+
+.ih-card {
+  width: min(320px, calc(100% - 32px));
+  padding: 20px;
+  border: 3px solid var(--gold);
+  border-radius: 20px;
+  background: var(--panel);
+  text-align: center;
+}
+
+.ih-card h2 {
+  margin: 0 0 8px;
+  color: var(--gold);
+}
+
+.ih-card p {
+  margin: 0 0 16px;
+  white-space: pre-line;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ih-boss,
+  .ih-skill.ready,
+  .ih-banner-in,
+  .ih-coin.ih-bump,
+  .ih-row.ih-pop {
+    animation: none;
+  }
+}
