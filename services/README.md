@@ -8,7 +8,7 @@ Keep local checkouts under this directory when convenient:
 
 ```text
 services/
-└── arctic-diner/  # clone of https://github.com/hee882/arctic-diner.git
+└── penguin-gourmet-club/  # clone of https://github.com/hee882/penguin-gourmet-club.git
 ```
 
 The directory is ignored by the base repository. Deploy each game from its own
