@@ -1,0 +1,22 @@
+{
+  "name": "yeonmu",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "packages/sim",
+    "apps/client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @yeonmu/client",
+    "check": "tsc --noEmit && node tools/check-boundaries.mjs && vitest run packages/sim/test/content.test.ts",
+    "test": "vitest run",
+    "build": "npm run check && npm run build -w @yeonmu/client"
+  },
+  "devDependencies": {
+    "@types/three": "0.180.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "5.1.0"
+  }
+}

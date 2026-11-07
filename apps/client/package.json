@@ -1,0 +1,6 @@
+{
+  "name": "@yeonmu/client", "version": "0.0.0", "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --host 127.0.0.1", "build": "vite build" },
+  "dependencies": { "@yeonmu/sim": "0.0.0", "three": "0.180.0" }
+}
