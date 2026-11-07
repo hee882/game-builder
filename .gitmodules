@@ -1,0 +1,3 @@
+[submodule "vendor/game-builder"]
+	path = vendor/game-builder
+	url = https://github.com/hee882/game-builder.git
