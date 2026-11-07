@@ -1060,7 +1060,7 @@ DAU 기준 환산(사업 문서용)
 
 ## 21. 저장소 구조 제안
 
-npm workspaces, 단일 `package-lock.json`. **현재 생성하지 않는다(구현 금지 단계).**
+npm workspaces, 단일 `package-lock.json`. **2026-11-07 단계 0 승인에 따라 `packages/sim`과 브라우저용 `apps/client`를 구현했다.** 아래의 서버·프로토콜·Electron 등 나머지 구조는 후속 단계 제안이다.
 
 ```text
 yeonmu/
