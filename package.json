@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @yeonmu/client",
-    "check": "tsc --noEmit && node tools/check-boundaries.mjs && vitest run packages/sim/test/content.test.ts",
+    "check": "tsc --noEmit && tsc -p packages/sim/tsconfig.json && node tools/check-boundaries.mjs && vitest run packages/sim/test/content.test.ts",
     "test": "vitest run",
     "build": "npm run check && npm run build -w @yeonmu/client"
   },

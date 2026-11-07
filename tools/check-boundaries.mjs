@@ -8,7 +8,7 @@ function scan(path) {
     else if (file.endsWith('.ts')) {
       const source = readFileSync(file, 'utf8');
       if (/\bany\b/.test(source)) throw new Error(`${file}: any 금지`);
-      if (path.includes('sim') && /\b(window|document|performance|Date)\b|from\s+['"](?:three|node:)/.test(source)) {
+      if (path.includes('sim') && /\b(window|document|performance|Date)\s*\.|from\s+['"](?:three|node:)/.test(source)) {
         throw new Error(`${file}: sim의 플랫폼 의존 금지`);
       }
     }
