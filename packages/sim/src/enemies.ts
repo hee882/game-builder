@@ -1,81 +1,143 @@
-import { attackById } from './content';
-import { direction, distanceSquared, heading, move } from './geometry';
-import { elapsed } from './actions';
-import { enemyHits } from './hits';
-import type { Enemy, State } from './types';
+import { AWAKE_RANGE, ENEMIES, PROJECTILE_SPEED, WARD_SLOW } from './data';
+import { canStand, findPath, lineOfSight } from './dungeon';
+import { damageEnemy, damagePlayer, spawnNear } from './combat';
+import type { World } from './combat';
+import { direction, dist } from './geometry';
+import { nextInt } from './rng';
+import type { Enemy, EnemyAttackKind } from './types';
 
-function updateMimic(state: State, enemy: Enemy): void {
-  const history = state.player.history.filter(item=>state.tick-item.tick<=900);
-  const recent = history.slice(-3);
-  const first = recent[0]?.path;
-  const repeated = recent.length===3 && first && recent.every(item=>item.path===first);
-  if (!repeated) { enemy.mimicReady=false; enemy.mimicPath=''; return; }
-  if (enemy.mimicPath!==first) {
-    enemy.mimicPath=first; enemy.mimicReady=true;
-    state.events.push({type:'boss_mimic_ready',tick:state.tick,enemy:enemy.id,path:first});
-  }
-}
-function selectAttack(state: State, enemy: Enemy): string {
-  if (enemy.kind==='reed') return 'reed_slash';
-  if (enemy.kind==='shield') return 'shield_bash';
-  if (enemy.kind==='porter') return 'porter_stab';
-  if (enemy.mimicReady && enemy.mimicPath.startsWith(state.player.path.join('>')) && state.player.path.length>0) {
-    enemy.mimicReady=false; return 'hat_mimic';
-  }
-  return enemy.sequence%3===2?'hat_sweep':'hat_cut';
-}
-function startEnemyAttack(state: State, enemy: Enemy): void {
-  enemy.attack=selectAttack(state,enemy); enemy.attackStart=state.tick;
-  enemy.facing=heading(enemy,state.player); enemy.target={x:state.player.x,z:state.player.z};
-  enemy.hitPlayer=false; enemy.sequence++;
-  state.events.push({type:'telegraph_start',tick:state.tick,enemy:enemy.id,attack:enemy.attack});
-}
-function enemyTimeline(state: State, enemy: Enemy): void {
-  if (!enemy.attack) return;
-  const attack=attackById(enemy.attack); const time=state.tick-enemy.attackStart;
-  if (enemy.kind==='porter' && time<attack.lead) porterFeint(state,enemy,time,attack.lead);
-  if (time>=attack.lead && time<attack.lead+attack.active) enemyHits(state,enemy,attack);
-  if (time>=attack.lead+attack.active+attack.recovery) {
-    enemy.attack=null; enemy.nextAttack=state.tick+10;
-  }
-}
-export function updateEnemies(state: State): void {
+const PLAYER_RADIUS = 0.4;
+const SWEEP_RADIUS = 5;
+const SLAM_RADIUS = 2.5;
+/** 보스 위험 공격 예고 길이(틱). 완료 기준: 15틱 이상. */
+export const BOSS_WINDUP: Record<'sweep' | 'slam' | 'summon', number> = { sweep: 24, slam: 20, summon: 15 };
+
+export function updateEnemies(world: World): void {
+  const { state } = world; const p = state.player;
+  const ward = state.tick < p.wardUntil;
   for (const enemy of state.enemies) {
-    if (enemy.hp<=0) continue;
-    if (enemy.kind==='hat') {
-      updateMimic(state,enemy);
-      if (enemy.hp<=enemy.maxHp/2 && enemy.phase===1) {
-        enemy.phase=2; state.events.push({type:'boss_phase',tick:state.tick,enemy:enemy.id,amount:2});
-      }
-    }
-    if (enemy.attack) { enemyTimeline(state,enemy); continue; }
-    if (state.tick<enemy.staggerUntil) continue;
-    const distance=distanceSquared(enemy,state.player);
-    const engagement=enemy.kind==='hat'?5500:8500;
-    if (distance>engagement**2) continue;
-    const strikeDistance={reed:1350,shield:1500,porter:1850,hat:2200}[enemy.kind];
-    if (distance>strikeDistance**2) approach(state,enemy);
-    else if (state.tick>=enemy.nextAttack) startEnemyAttack(state,enemy);
+    if (enemy.hp <= 0) continue;
+    enemy.slowed = ward && dist(enemy, p) <= 6;
+    if (enemy.mode === 'sleep') { wake(world, enemy); continue; }
+    if (state.tick < enemy.staggerUntil) continue;
+    if (enemy.mode === 'windup') { if (state.tick >= enemy.modeUntil) resolveAttack(world, enemy); continue; }
+    if (enemy.mode === 'recover') { if (state.tick >= enemy.modeUntil) enemy.mode = 'chase'; continue; }
+    if (enemy.boss) bossThink(world, enemy); else think(world, enemy);
   }
+  state.enemies = state.enemies.filter(enemy => enemy.hp > 0);
 }
-function approach(state: State, enemy: Enemy): void {
-  const p=state.player;
-  enemy.facing=heading(enemy,p);
-  const orbit=enemy.kind==='reed' && distanceSquared(enemy,p)<3500**2 && enemy.sequence%2===0;
-  move(enemy,orbit?(enemy.facing+1)%8:enemy.facing,enemy.kind==='hat'?65:enemy.kind==='porter'?105:75);
-  for(const other of state.enemies) {
-    if(other.id!==enemy.id && other.hp>0 && distanceSquared(enemy,other)<650**2) move(enemy,heading(other,enemy),55);
+
+function wake(world: World, enemy: Enemy): void {
+  const p = world.state.player;
+  if (dist(enemy, p) <= AWAKE_RANGE && lineOfSight(world.dungeon, enemy, p)) {
+    enemy.mode = 'chase';
+    // 무리 전체가 함께 달려들어야 '쓸어버리는' 장면이 나온다.
+    for (const ally of world.grid.query(enemy, 6)) if (ally.mode === 'sleep') ally.mode = 'chase';
   }
 }
 
-function porterFeint(state:State,enemy:Enemy,time:number,lead:number):void {
-  const p=state.player;
-  // 마지막 6틱에는 추적을 잠가 예고를 보고 다시 대응할 여유를 남긴다.
-  if(time<lead-6) {
-    const remaining=p.action.kind==='dodge'?Math.max(0,13-elapsed(state)):0;
-    const dir=direction(p.facing);
-    enemy.target={x:p.x+Math.round(dir.x*remaining*290/1000),z:p.z+Math.round(dir.z*remaining*290/1000)};
-    enemy.facing=heading(enemy,enemy.target);
+function think(world: World, enemy: Enemy): void {
+  const p = world.state.player; const def = ENEMIES[enemy.kind]; const d = dist(enemy, p);
+  face(enemy, p.x, p.z);
+  if (def.attack === 'throw') {
+    if (d < 4.5) { step(world, enemy, -1); return; }
+    if (d <= def.range && lineOfSight(world.dungeon, enemy, p)) { begin(world, enemy, 'throw', def.windup); return; }
+    step(world, enemy, 1); return;
   }
-  if(time>=lead-6 && distanceSquared(enemy,enemy.target)>1200**2) move(enemy,enemy.facing,170);
+  if (d <= def.range + PLAYER_RADIUS) { begin(world, enemy, 'melee', def.windup); return; }
+  step(world, enemy, 1);
+}
+
+function bossThink(world: World, enemy: Enemy): void {
+  const { state } = world; const p = state.player; const d = dist(enemy, p);
+  face(enemy, p.x, p.z);
+  const enraged = enemy.hp < enemy.maxHp / 2;
+  if (state.tick >= enemy.nextSpecial) {
+    const reeds = world.grid.query(enemy, 10).filter(e => e.kind === 'reed').length;
+    const options: ('sweep' | 'slam' | 'summon')[] = [];
+    if (d <= SWEEP_RADIUS + 0.5) options.push('sweep');
+    options.push('slam');
+    if (reeds < 8) options.push('summon');
+    const choice = options[nextInt(state, 0, options.length - 1)]!;
+    enemy.nextSpecial = state.tick + (enraged ? 45 : 75);
+    begin(world, enemy, choice, BOSS_WINDUP[choice]);
+    return;
+  }
+  if (d > 3) step(world, enemy, enraged ? 1.3 : 1);
+}
+
+function begin(world: World, enemy: Enemy, attack: EnemyAttackKind, windup: number): void {
+  const { state } = world; const p = state.player;
+  enemy.mode = 'windup'; enemy.attack = attack; enemy.modeUntil = state.tick + windup;
+  enemy.attackTarget = attack === 'sweep' || attack === 'summon' ? { x: enemy.x, z: enemy.z } : { x: p.x, z: p.z };
+  if (attack === 'sweep' || attack === 'slam') {
+    const radius = attack === 'sweep' ? SWEEP_RADIUS : SLAM_RADIUS;
+    state.events.push({ type: 'telegraph', enemy: enemy.id, attack, x: enemy.attackTarget.x, z: enemy.attackTarget.z, radius, ticks: windup });
+  }
+}
+
+function resolveAttack(world: World, enemy: Enemy): void {
+  const { state } = world; const p = state.player; const def = ENEMIES[enemy.kind];
+  const attack = enemy.attack;
+  if (attack === 'melee' && dist(enemy, p) <= def.range + PLAYER_RADIUS + 0.4) damagePlayer(state, enemy.damage, 'melee');
+  if (attack === 'throw') {
+    const dir = direction(enemy, enemy.attackTarget);
+    state.projectiles.push({ id: state.nextId++, x: enemy.x, z: enemy.z, vx: dir.x * PROJECTILE_SPEED, vz: dir.z * PROJECTILE_SPEED, until: state.tick + 45, damage: enemy.damage });
+  }
+  if (attack === 'sweep' && dist(enemy, p) <= SWEEP_RADIUS + PLAYER_RADIUS) damagePlayer(state, enemy.damage, 'sweep');
+  if (attack === 'slam' && dist(enemy.attackTarget, p) <= SLAM_RADIUS + PLAYER_RADIUS) damagePlayer(state, Math.round(enemy.damage * 0.8), 'slam');
+  if (attack === 'summon') for (let i = 0; i < 4; i++) spawnNear(world, enemy, (i / 4) * Math.PI * 2, 2.5, 'reed');
+  enemy.attack = null; enemy.mode = 'recover'; enemy.modeUntil = state.tick + def.recover;
+}
+
+function face(enemy: Enemy, x: number, z: number): void { enemy.facing = Math.atan2(x - enemy.x, z - enemy.z); }
+
+/** sign=1 접근, -1 후퇴. 시야가 막히면 드물게 길찾기 지점을 갱신한다. */
+function step(world: World, enemy: Enemy, sign: number): void {
+  const { state, dungeon } = world; const p = state.player;
+  let goal = { x: p.x, z: p.z };
+  if (sign > 0 && !lineOfSight(dungeon, enemy, p, enemy.radius * 0.8)) {
+    if (state.tick >= enemy.repathAt || !enemy.waypoint) {
+      // 100마리가 같은 틱에 A*를 돌리지 않도록 id로 분산한다.
+      enemy.repathAt = state.tick + 20 + (enemy.id % 10);
+      enemy.waypoint = findPath(dungeon, enemy, p)?.[0] ?? null;
+    }
+    if (enemy.waypoint) goal = enemy.waypoint;
+  } else enemy.waypoint = null;
+  const dir = direction(enemy, goal);
+  let sx = dir.x * sign; let sz = dir.z * sign;
+  for (const other of world.grid.query(enemy, enemy.radius * 2)) {
+    if (other.id === enemy.id) continue;
+    const dx = enemy.x - other.x; const dz = enemy.z - other.z; const d = Math.hypot(dx, dz) || 0.01;
+    const push = (enemy.radius + other.radius - d) / (enemy.radius + other.radius);
+    if (push > 0) { sx += (dx / d) * push * 1.5; sz += (dz / d) * push * 1.5; }
+  }
+  const length = Math.hypot(sx, sz) || 1;
+  const speed = Math.abs(sign) * enemy.speed * (enemy.slowed ? 1 - WARD_SLOW : 1);
+  const nx = enemy.x + (sx / length) * speed; const nz = enemy.z + (sz / length) * speed;
+  if (canStand(dungeon, nx, nz, enemy.radius)) { enemy.x = nx; enemy.z = nz; }
+  else if (canStand(dungeon, nx, enemy.z, enemy.radius)) enemy.x = nx;
+  else if (canStand(dungeon, enemy.x, nz, enemy.radius)) enemy.z = nz;
+  if (enemy.waypoint && dist(enemy, enemy.waypoint) < 0.5) enemy.waypoint = null;
+}
+
+export function updateProjectiles(world: World): void {
+  const { state, dungeon } = world; const p = state.player;
+  state.projectiles = state.projectiles.filter(shot => {
+    shot.x += shot.vx; shot.z += shot.vz;
+    if (state.tick >= shot.until || !canStand(dungeon, shot.x, shot.z, 0.05)) return false;
+    if (dist(shot, p) <= PLAYER_RADIUS + 0.25) { damagePlayer(state, shot.damage, 'throw'); return false; }
+    return true;
+  });
+}
+
+export function updateZones(world: World): void {
+  const { state } = world;
+  state.fires = state.fires.filter(fire => {
+    if (state.tick >= fire.nextPulse) {
+      fire.nextPulse = state.tick + 10;
+      for (const enemy of world.grid.query(fire, fire.radius)) damageEnemy(world, enemy, fire.damage, { source: 'fire', from: fire, ignoreShield: true });
+    }
+    return state.tick < fire.until;
+  });
 }

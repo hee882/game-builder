@@ -1,196 +1,290 @@
 import { describe, expect, it } from 'vitest';
-import { createState, EMPTY_INPUT, elapsed, FixedStepper, makeEnemy, nodeById, step } from '../src/index';
-import type { Command, InputFrame, State } from '../src/index';
+import {
+  BOSS_WINDUP, EMPTY_INPUT, MAX_LEVEL, SKILLS, computeStats, createRun, findPath, generateDungeon, isFloor, lineOfSight,
+  makeWorld, parseProfile, profileFromRun, serializeProfile, starterProfile, step, xpToNext,
+} from '../src/index';
+import type { Item, Vec, World } from '../src/index';
+import { addEnemy, bot, emptyWorld, input, profileAt, run } from './helpers';
 
-function input(pressed: Command[]=[], extra: Partial<InputFrame>={}): InputFrame {
-  return {...EMPTY_INPUT,pressed,...extra};
-}
-function arena(): State { const state=createState(); state.enemies=[]; return state; }
-function tickTo(state: State, time: number): State {
-  let result=state;
-  for (let i=0;i<120 && elapsed(result)<time;i++) result=step(result,EMPTY_INPUT);
-  expect(elapsed(result)).toBe(time); return result;
-}
-function actionState(node: string, time: number): State {
-  const state=arena(); state.player.action={kind:'attack',node,start:0,hitTargets:[]};
-  state.player.actionTick=time; state.player.path=[node]; return state;
-}
-function incoming(time: number, attack='reed_slash'): State {
-  const state=arena(); state.player.x=0; state.player.z=0;
-  const enemy=makeEnemy('test','reed',0,1000);
-  enemy.facing=4; enemy.attack=attack; enemy.attackStart=-12+time; enemy.nextAttack=9999;
-  state.enemies=[enemy]; return state;
+const SEEDS = Array.from({ length: 20 }, (_, i) => 1000 + i * 37);
+
+function snapshot(world: World): string {
+  const { events: _events, ...rest } = world.state;
+  return JSON.stringify(rest);
 }
 
-describe('공유 sim 결정성과 시계',()=>{
-  it('같은 입력 900틱 → 매 틱 같은 상태, 원본 상태 불변',()=>{
-    let a=createState(); let b=createState();
-    for(let tick=0;tick<900;tick++) {
-      const frame=input(tick%11===0?['light']:tick%41===0?['dodge']:[],{moveX:tick%80<40?1:-1,moveZ:-1});
-      const before=structuredClone(a);
-      const next=step(a,frame); b=step(b,frame);
-      expect(a).toEqual(before); expect(next).toEqual(b); a=next;
+describe('던전 생성', () => {
+  it('시드 20개 모두 방 6개 이상이고 모든 방이 시작 방에서 도달 가능하다', () => {
+    for (const seed of SEEDS) {
+      const d = generateDungeon(seed);
+      expect(d.rooms.length).toBeGreaterThanOrEqual(6);
+      const start = d.rooms[0]!;
+      for (const room of d.rooms) expect(findPath(d, { x: start.cx, z: start.cz }, { x: room.cx, z: room.cz }), `seed ${seed}`).not.toBeNull();
     }
   });
-  it('고정 스텝은 렌더 프레임 분할에 무관하게 30Hz를 유지한다',()=>{
-    const a=new FixedStepper(); const b=new FixedStepper(); let left=0; let right=0;
-    for(let i=0;i<60;i++) a.advance(1000/60,()=>left++);
-    for(let i=0;i<30;i++) b.advance(1000/30,()=>right++);
-    expect(left).toBe(30); expect(right).toBe(30);
+  it('같은 시드는 같은 던전, 다른 시드는 다른 던전', () => {
+    expect(Array.from(generateDungeon(5).floor)).toEqual(Array.from(generateDungeon(5).floor));
+    expect(Array.from(generateDungeon(5).floor)).not.toEqual(Array.from(generateDungeon(6).floor));
   });
-  it('히트스톱 중 박자·캔슬 창과 입력 버퍼의 로컬 나이는 불변이다',()=>{
-    let state=actionState('hw_l1',12); state.player.hitstop=6;
-    state=step(state,input(['light']));
-    for(let i=0;i<5;i++) {
-      expect(elapsed(state)).toBe(12); expect(state.player.buffer[0]?.at).toBe(12);
-      expect(state.player.action.node).toBe('hw_l1'); state=step(state,EMPTY_INPUT);
+  it('시작·보스·정예 방이 하나씩 이상 있고 보스 방에는 보스 1체', () => {
+    for (const seed of SEEDS) {
+      const { state, dungeon } = createRun(starterProfile(), seed);
+      const kinds = dungeon.rooms.map(room => room.kind);
+      expect(kinds.filter(kind => kind === 'start')).toHaveLength(1);
+      expect(kinds.filter(kind => kind === 'boss')).toHaveLength(1);
+      expect(kinds).toContain('elite');
+      expect(state.enemies.filter(e => e.boss)).toHaveLength(1);
+      expect(state.enemies.some(e => e.elite !== null)).toBe(true);
+      expect(state.enemies.length).toBeGreaterThanOrEqual(40);
     }
-    expect(state.player.actionTick).toBe(12);
-    state=step(state,EMPTY_INPUT); expect(state.player.action.node).toBe('hw_dl');
-  });
-  it('히트스톱 길이 0·2·6틱에서도 같은 로컬 박자 입력은 같은 지연 노드를 선택한다 C13',()=>{
-    for(const stop of [0,2,6]) {
-      let state=actionState('hw_l1',12); state.player.hitstop=stop;
-      state=step(state,input(['light']));
-      for(let i=0;i<stop;i++) state=step(state,EMPTY_INPUT);
-      expect(state.player.action.node).toBe('hw_dl');
-    }
-  });
-  it('히트스톱 동안 튕겨내기 창의 actionTick 경계는 불변이다',()=>{
-    let state=arena(); state.player.action={kind:'parry',node:'',start:0,hitTargets:[]};
-    state.player.actionTick=3; state.player.hitstop=4;
-    for(let i=0;i<4;i++) { state=step(state,input([],{guardHeld:true})); expect(elapsed(state)).toBe(3); }
-    expect(state.player.action.kind).toBe('parry');
-  });
-  it('방어 입력은 히트스톱을 즉시 해제하고 튕겨내기 창을 서버 틱 최소 5틱 보장한다',()=>{
-    for(let offset=0;offset<=5;offset++) {
-      let state=incoming(offset); state.player.hitstop=6;
-      state=step(state,input(['guard'],{guardHeld:false}));
-      const outcomes=state.events.map(e=>e.result);
-      for(let i=0;i<offset;i++) {state=step(state,EMPTY_INPUT); outcomes.push(...state.events.map(e=>e.result));}
-      expect(outcomes.includes('parried')).toBe(offset<5);
-      if(offset===0) expect(state.player.action.kind).toBe('counter');
-      if(offset===5) expect(state.player.hp).toBe(92);
-    }
-  });
-  it('회피 입력도 히트스톱을 해제한다',()=>{
-    const state=actionState('hw_h1',8); state.player.hitstop=3;
-    const next=step(state,input(['dodge']));
-    expect(next.player.hitstop).toBe(0); expect(next.player.action.kind).toBe('dodge'); expect(elapsed(next)).toBe(1);
-  });
-  it('적 타임라인과 텔레그래프는 플레이어 히트스톱으로 밀리지 않는다',()=>{
-    let a=incoming(5); let b=structuredClone(a); b.player.hitstop=20;
-    const hitA:number[]=[]; const hitB:number[]=[];
-    for(let i=0;i<10;i++) {
-      a=step(a,EMPTY_INPUT); b=step(b,EMPTY_INPUT);
-      if(a.events.some(e=>e.result==='hit')) hitA.push(a.tick);
-      if(b.events.some(e=>e.result==='hit')) hitB.push(b.tick);
-    }
-    expect(hitA).toEqual([6]); expect(hitB).toEqual(hitA);
   });
 });
 
-describe('환도 그래프와 실제 판정',()=>{
-  it('억새 잔향은 가만히 선 플레이어에게 접근하여 실제 피해를 준다',()=>{
-    let state=arena();state.player.x=0;state.player.z=0;
-    state.enemies=[makeEnemy('reed','reed',0,3000)];
-    for(let i=0;i<180;i++) state=step(state,EMPTY_INPUT);
-    expect(state.player.hp).toBeLessThan(100);
-  });
-  it('그림자 등짐장수는 회피 끝 지점을 예측하고 마지막 6틱에 조준을 고정한다',()=>{
-    let state=arena();state.player.x=0;state.player.z=0;state.player.facing=0;
-    const enemy=makeEnemy('porter','porter',0,-1000);enemy.attack='porter_stab';enemy.attackStart=0;
-    state.enemies=[enemy];state=step(state,input(['dodge']));
-    expect(state.enemies[0]!.target.z).toBeGreaterThan(state.player.z);
-    for(let i=0;i<12;i++) state=step(state,EMPTY_INPUT);
-    const target={...state.enemies[0]!.target};state=step(state,EMPTY_INPUT);
-    expect(state.enemies[0]!.target).toEqual(target);
-  });
-  it('삿갓은 같은 경로 3회 뒤 흉내 반격을 예고하고 다른 경로에서 해제한다',()=>{
-    let state=arena();state.tick=100;state.player.x=0;state.player.z=0;
-    state.player.path=['hw_l1'];
-    state.player.history=[1,2,3].map(tick=>({tick,path:'hw_l1>hw_l2'}));
-    state.enemies=[makeEnemy('hat','hat',0,1500)];
-    state=step(state,EMPTY_INPUT);
-    expect(state.enemies[0]!.attack).toBe('hat_mimic');
-    expect(state.events.some(event=>event.type==='boss_mimic_ready')).toBe(true);
-    state.player.history.push({tick:state.tick,path:'hw_h1'});
-    state=step(state,EMPTY_INPUT);expect(state.enemies[0]!.mimicPath).toBe('');
-  });
-  it('빨강 보스 광역은 튕겨내기로 막을 수 없다',()=>{
-    const state=incoming(0,'hat_sweep');state.enemies[0]!.attackStart=-24;
-    const next=step(state,input(['guard']));
-    expect(next.player.hp).toBe(70);expect(next.events.some(event=>event.result==='parried')).toBe(false);
-  });
-  it('기본 4연타, 올려베기, 삼연 찌르기, 지연 내려찍기와 H-H 간선을 재생한다',()=>{
-    const routes: [string,number,Command,string][]=[
-      ['hw_l1',5,'light','hw_l2'],['hw_l2',5,'light','hw_l3'],['hw_l3',5,'light','hw_l4'],
-      ['hw_l2',5,'heavy','hw_llh'],['hw_l3',5,'heavy','hw_lllh'],['hw_l1',12,'light','hw_dl'],
-      ['hw_dl',6,'heavy','hw_dlh'],['hw_h1',15,'heavy','hw_hh'],
-    ];
-    for(const [from,time,key,to] of routes) expect(step(actionState(from,time),input([key])).player.action.node).toBe(to);
-  });
-  it('박자 경계 11=일반, 12~20=지연, 21=리셋을 지킨다',()=>{
-    for(const [time,target] of [[11,'hw_l2'],[12,'hw_dl'],[20,'hw_dl'],[21,'hw_l1']] as const) {
-      expect(step(actionState('hw_l1',time),input(['light'])).player.action.node).toBe(target);
+describe('결정성', () => {
+  it('같은 시드·같은 입력 2400틱 → 매 300틱 같은 상태(드랍·난수 포함)', () => {
+    const a = createRun(starterProfile(), 42); const b = createRun(starterProfile(), 42);
+    const wa = makeWorld(a.state, a.dungeon); const wb = makeWorld(b.state, b.dungeon);
+    for (let t = 0; t < 2400; t++) {
+      step(wa, bot(wa)); step(wb, bot(wb));
+      if (t % 300 === 0) expect(snapshot(wa)).toBe(snapshot(wb));
     }
-  });
-  it('차지 18틱, 회피 직후 L, 성공 튕겨내기 L/H로 나머지 노드에 진입한다',()=>{
-    let charge=step(arena(),input(['heavy'],{heavyHeld:true}));
-    for(let i=0;i<18;i++) charge=step(charge,input([],{heavyHeld:true}));
-    expect(charge.player.action.node).toBe('hw_charge');
-    let dodge=step(arena(),input(['dodge'])); dodge=tickTo(dodge,13);
-    expect(step(dodge,input(['light'])).player.action.node).toBe('hw_dodge_l');
-    for(const key of ['light','heavy'] as const) {
-      let parry=step(incoming(0),input(['guard']));
-      for(let i=0;i<3;i++) parry=step(parry,EMPTY_INPUT);
-      expect(step(parry,input([key])).player.action.node).toBe(key==='light'?'hw_parry_l':'hw_parry_h');
-    }
-  });
-  it('공격 캔슬 전 입력은 5틱 버퍼에서 기다리고 L4는 공격 캔슬 불가다',()=>{
-    let state=step(actionState('hw_l1',2),input(['light']));
-    state=tickTo(state,5); expect(step(state,EMPTY_INPUT).player.action.node).toBe('hw_l2');
-    expect(step(actionState('hw_l4',8),input(['light'])).player.action.node).toBe('hw_l4');
-  });
-  it('동일 히트는 대상당 한 번, 다중 대상 히트스톱은 합산하지 않는다',()=>{
-    let state=actionState('hw_l1',3); state.player.x=0; state.player.z=0; state.player.facing=0;
-    state.enemies=[makeEnemy('a','reed',0,1000),makeEnemy('b','reed',300,1000)];
-    state=step(state,EMPTY_INPUT);
-    expect(state.enemies.map(e=>e.hp)).toEqual([53,53]); expect(state.player.hitstop).toBe(1);
-    for(let i=0;i<3;i++) state=step(state,EMPTY_INPUT);
-    expect(state.enemies.map(e=>e.hp)).toEqual([53,53]);
-  });
-  it('삼연 찌르기는 서로 다른 3개 판정 마커로 적중한다',()=>{
-    let state=actionState('hw_lllh',0); state.player.x=0;state.player.z=0;state.player.facing=0;
-    state.enemies=[makeEnemy('a','shield',0,1200)]; state.enemies[0]!.guardBrokenUntil=9999;
-    state.enemies[0]!.nextAttack=9999; let hits=0;
-    for(let i=0;i<25;i++) { state=step(state,EMPTY_INPUT);hits+=state.events.filter(e=>e.type==='hit').length; }
-    expect(hits).toBe(3);
-  });
-  it('방패 정면 약공은 막히고 지연 베기는 가드를 넘긴다',()=>{
-    for(const [node,damage] of [['hw_l1',0],['hw_dl',24]] as const) {
-      const state=actionState(node,nodeById(node).active[0]!); state.player.x=0;state.player.z=0;state.player.facing=0;
-      const shield=makeEnemy('shield','shield',0,1000);shield.facing=4;state.enemies=[shield];
-      expect(step(state,EMPTY_INPUT).enemies[0]!.hp).toBe(160-damage);
-    }
-  });
-  it('홀드는 5틱 뒤 막기로, 탭 실패는 10틱 후딜로 전환한다',()=>{
-    for(const hold of [true,false]) {
-      let state=step(arena(),input(['guard'],{guardHeld:hold}));
-      for(let i=0;i<5;i++) state=step(state,input([],{guardHeld:hold}));
-      expect(state.player.action.kind).toBe(hold?'guard':'recovery');
-    }
-  });
-  it('3회 연속 회피 후 12틱 지침은 반격 입력으로 생략할 수 없다',()=>{
-    let state=arena();state.player.dodgeChain=2;state.player.dodgeUntil=40;
-    state=step(state,input(['dodge']));state=tickTo(state,13);
-    state=step(state,input(['light']));expect(state.player.action.kind).toBe('dodge');
-    state=tickTo(state,25);state=step(state,EMPTY_INPUT);
-    expect(state.player.action.kind).toBe('idle');expect(state.player.dodgeChain).toBe(0);
-  });
-  it('단순/분기 모드는 같은 적 구성으로 시작하고 지연 분기만 달라진다',()=>{
-    expect(createState('simple').enemies).toEqual(createState('branch').enemies);
-    const state=actionState('hw_l1',12); state.mode='simple';
-    expect(step(state,input(['light'])).player.action.node).toBe('hw_l2');
+    expect(snapshot(wa)).toBe(snapshot(wb));
+    expect(wa.state.kills).toBeGreaterThan(0);
   });
 });
+
+describe('클릭 조작', () => {
+  it('벽 너머 지점을 클릭하면 벽을 돌아 도착한다', () => {
+    const world = emptyWorld(11); const d = world.dungeon; const p = world.state.player;
+    const target = world.dungeon.rooms.map(room => ({ x: room.cx, z: room.cz })).find(point => !lineOfSight(d, p, point))!;
+    expect(target).toBeDefined();
+    let arrived = false;
+    for (let t = 0; t < 1200 && !arrived; t++) {
+      step(world, input({ moveTo: target }));
+      expect(isFloor(d, p.x, p.z)).toBe(true);
+      arrived = Math.hypot(p.x - target.x, p.z - target.z) < 0.3;
+    }
+    expect(arrived).toBe(true);
+  });
+  it('적을 클릭하면 사거리까지 다가가 기본 공격으로 피해를 준다', () => {
+    const world = emptyWorld(); const id = addEnemy(world, 'shield', { x: 4, z: 0 }, false);
+    const enemy = world.state.enemies.find(e => e.id === id)!;
+    enemy.speed = 0; // 다가오지 않게 고정
+    const hp = enemy.hp;
+    step(world, input({ attack: id }));
+    run(world, 60);
+    expect(enemy.hp).toBeLessThan(hp);
+  });
+  it('클릭한 아이템까지 걸어가 줍는다', () => {
+    const world = emptyWorld(); const p = world.state.player;
+    const item: Item = { id: 99, slot: 'hat', rarity: 'magic', name: '굳센 흑립', ilvl: 1, base: 5, affixes: [{ stat: 'life', value: 10 }], legendary: null };
+    world.state.items.push({ id: 500, x: p.x + 3, z: p.z, item });
+    step(world, input({ pickup: 500 }));
+    run(world, 40);
+    expect(p.inventory.map(i => i.id)).toContain(99);
+    expect(world.state.items).toHaveLength(0);
+  });
+});
+
+describe('스킬', () => {
+  it('해금 레벨 전에는 쓸 수 없다(질풍 돌진 = 2레벨)', () => {
+    const world = emptyWorld(); const p = world.state.player;
+    p.slots.s1 = 'dash';
+    step(world, input({ cast: { slot: 's1', at: { x: p.x + 3, z: p.z } } }));
+    expect(p.cast).toBeNull();
+  });
+  it('기가 모자라면 회전베기를 못 쓰고, 쓰면 25를 소모한다', () => {
+    const world = emptyWorld(); const p = world.state.player;
+    p.spirit = 10;
+    step(world, input({ cast: { slot: 'rmb', at: p } }));
+    expect(p.cast).toBeNull();
+    p.spirit = 60;
+    step(world, input({ cast: { slot: 'rmb', at: p } }));
+    expect(p.cast?.skill).toBe('spin');
+    expect(p.spirit).toBeCloseTo(60 + p.stats.spiritRegen - 25, 5);
+  });
+  it('회전베기는 주변 원형의 적을 모두 때린다', () => {
+    const world = emptyWorld(); const p = world.state.player; p.spirit = 100;
+    const ids = [{ x: 1.5, z: 0 }, { x: -1.5, z: 0.5 }, { x: 0, z: -2 }, { x: 8, z: 0 }].map(o => addEnemy(world, 'shield', o));
+    step(world, input({ cast: { slot: 'rmb', at: p } }));
+    run(world, 6);
+    const hit = ids.map(id => world.state.enemies.find(e => e.id === id)!).map(e => e.hp < e.maxHp);
+    expect(hit).toEqual([true, true, true, false]);
+  });
+  it('재사용 대기 중에는 다시 못 쓴다(질풍 돌진 120틱)', () => {
+    const world = emptyWorld(7, profileAt(2)); const p = world.state.player;
+    p.slots.s1 = 'dash';
+    step(world, input({ cast: { slot: 's1', at: { x: p.x + 2, z: p.z } } }));
+    expect(p.cast?.skill).toBe('dash');
+    run(world, 20);
+    step(world, input({ cast: { slot: 's1', at: { x: p.x - 2, z: p.z } } }));
+    expect(p.cast).toBeNull();
+    expect(p.cooldowns.dash).toBe(SKILLS.dash.cooldown);
+  });
+  it('슬롯 교체: 잠긴 스킬은 거부, 이미 있는 스킬은 자리를 맞바꾼다', () => {
+    const world = emptyWorld(7, profileAt(3)); const p = world.state.player;
+    step(world, input({ commands: [{ type: 'assign', slot: 's1', skill: 'cleave' }] }));
+    expect(p.slots.s1).toBeNull();
+    step(world, input({ commands: [{ type: 'assign', slot: 's1', skill: 'talisman' }, { type: 'assign', slot: 's2', skill: 'spin' }] }));
+    expect(p.slots).toMatchObject({ s1: 'talisman', s2: 'spin', rmb: null });
+  });
+  it('방패 역졸은 정면 기본 공격을 절반으로 줄이고 혼백 가르기는 막지 못한다', () => {
+    const world = emptyWorld(7, profileAt(5)); const p = world.state.player;
+    const id = addEnemy(world, 'shield', { x: 0, z: 1.5 }, false);
+    const enemy = world.state.enemies.find(e => e.id === id)!;
+    enemy.facing = Math.PI; // 플레이어를 바라봄
+    p.stats.critChance = 0;
+    step(world, input({ cast: { slot: 'lmb', at: enemy } }));
+    run(world, 12);
+    const slashLoss = enemy.maxHp - enemy.hp;
+    expect(slashLoss).toBe(Math.round(p.stats.weaponDamage * p.stats.damageMult * 0.5));
+    p.slots.s1 = 'cleave';
+    const before = enemy.hp;
+    step(world, input({ cast: { slot: 's1', at: enemy } }));
+    run(world, 15);
+    expect(before - enemy.hp).toBe(Math.min(before, Math.round(p.stats.weaponDamage * p.stats.damageMult * 4)));
+  });
+});
+
+describe('보스', () => {
+  it('보스 위험 공격 예고는 모두 15틱 이상', () => {
+    for (const ticks of Object.values(BOSS_WINDUP)) expect(ticks).toBeGreaterThanOrEqual(15);
+  });
+  it('휩쓸기 예고 중 범위를 벗어나면 맞지 않고, 남아 있으면 맞는다', () => {
+    for (const escape of [true, false]) {
+      const world = emptyWorld(); const p = world.state.player; p.invulnerableUntil = 0;
+      const id = addEnemy(world, 'hat', { x: 0, z: 3 });
+      const boss = world.state.enemies.find(e => e.id === id)!;
+      boss.nextSpecial = 0;
+      step(world, EMPTY_INPUT);
+      expect(boss.mode).toBe('windup');
+      const attack = boss.attack;
+      const target = attack === 'sweep' ? { x: boss.x, z: boss.z - 9 } : { x: p.x - 5, z: p.z };
+      const hp = p.hp;
+      run(world, 30, () => (escape ? input({ moveTo: target }) : EMPTY_INPUT));
+      if (attack === 'summon') { expect(world.state.enemies.length).toBeGreaterThan(1); continue; }
+      if (escape) expect(p.hp).toBe(hp); else expect(p.hp).toBeLessThan(hp);
+    }
+  });
+  it('보스를 쓰러뜨리면 마을 문이 열리고 희귀 이상 아이템 포함 3개가 떨어진다', () => {
+    const world = emptyWorld(); const id = addEnemy(world, 'hat', { x: 0, z: 2 });
+    const boss = world.state.enemies.find(e => e.id === id)!;
+    boss.hp = 1; world.state.player.stats.critChance = 0;
+    step(world, input({ attack: id }));
+    run(world, 20);
+    expect(world.state.portal).not.toBeNull();
+    expect(world.state.items).toHaveLength(3);
+    expect(world.state.items.some(g => g.item.rarity === 'rare' || g.item.rarity === 'legendary')).toBe(true);
+  });
+});
+
+describe('장비·성장', () => {
+  const sword = (base: number, extra: Partial<Item> = {}): Item => ({ id: 77, slot: 'weapon', rarity: 'rare', name: '시험 환도', ilvl: 3, base, affixes: [], legendary: null, ...extra });
+  it('장착하면 스탯이 바뀌고 실제 피해도 바뀐다', () => {
+    const world = emptyWorld(); const p = world.state.player;
+    p.inventory.push(sword(40, { affixes: [{ stat: 'damagePct', value: 10 }] }));
+    step(world, input({ commands: [{ type: 'equip', item: 77 }] }));
+    expect(p.equipped.weapon?.id).toBe(77);
+    expect(p.inventory.map(i => i.name)).toContain('낡은 환도');
+    expect(p.stats.weaponDamage).toBe(40);
+    p.stats.critChance = 0;
+    const id = addEnemy(world, 'shield', { x: 0, z: 1.5 }, false);
+    const enemy = world.state.enemies.find(e => e.id === id)!;
+    enemy.facing = 0; enemy.staggerUntil = 1e9; // 등을 보인 채 돌아서지 못하게 고정
+    step(world, input({ cast: { slot: 'lmb', at: enemy } }));
+    run(world, 12);
+    expect(enemy.maxHp - enemy.hp).toBe(Math.round(40 * 1.1));
+  });
+  it('메아리 노리개: 회전베기가 0.4초 뒤 한 번 더 때린다', () => {
+    const world = emptyWorld(); const p = world.state.player; p.spirit = 100;
+    p.equipped.charm = { ...sword(5), id: 78, slot: 'charm', legendary: 'echo_charm' };
+    p.stats = computeStats(p.level, p.equipped); p.stats.critChance = 0;
+    const id = addEnemy(world, 'hat', { x: 1.5, z: 0 }, false);
+    const enemy = world.state.enemies.find(e => e.id === id)!;
+    step(world, input({ cast: { slot: 'rmb', at: p } }));
+    run(world, 30);
+    const one = Math.round(p.stats.weaponDamage * p.stats.damageMult * 1.6);
+    expect(enemy.maxHp - enemy.hp).toBe(one * 2);
+  });
+  it('귀화 부적 토시: 폭염 부적이 추가 폭발 3개를 만든다', () => {
+    const world = emptyWorld(7, profileAt(3)); const p = world.state.player; p.spirit = 100; p.slots.s1 = 'talisman';
+    p.equipped.gloves = { ...sword(5), id: 79, slot: 'gloves', legendary: 'split_talisman' };
+    p.stats = computeStats(p.level, p.equipped);
+    const blasts: string[] = [];
+    step(world, input({ cast: { slot: 's1', at: { x: p.x + 3, z: p.z } } }));
+    for (let t = 0; t < 30; t++) { step(world, EMPTY_INPUT); for (const e of world.state.events) if (e.type === 'blast') blasts.push(e.source); }
+    expect(blasts.filter(s => s === 'talisman')).toHaveLength(1);
+    expect(blasts.filter(s => s === 'split_blast')).toHaveLength(3);
+  });
+  it('불길 걷는 환도: 돌진 경로에 불길이 남아 적에게 지속 피해를 준다', () => {
+    const world = emptyWorld(7, profileAt(2)); const p = world.state.player; p.slots.s1 = 'dash';
+    p.equipped.weapon = sword(20, { legendary: 'fire_walker' });
+    p.stats = computeStats(p.level, p.equipped);
+    const at = [{ x: 2, z: 0 }, { x: -2, z: 0 }, { x: 0, z: 2 }, { x: 0, z: -2 }].map(o => ({ x: p.x + o.x, z: p.z + o.z })).find(v => lineOfSight(world.dungeon, p, v, 0.4))!;
+    step(world, input({ cast: { slot: 's1', at } }));
+    run(world, 8);
+    expect(world.state.fires.length).toBeGreaterThan(0);
+    const fire = world.state.fires[0]!;
+    const id = addEnemy(world, 'shield', { x: fire.x - p.x, z: fire.z - p.z }, false);
+    world.state.enemies.find(e => e.id === id)!.speed = 0;
+    run(world, 40);
+    const enemy = world.state.enemies.find(e => e.id === id)!;
+    expect(enemy.hp).toBeLessThan(enemy.maxHp);
+  });
+  it('경험치 곡선과 레벨업 해금·자동 배치', () => {
+    expect([1, 2, 3].map(xpToNext)).toEqual([100, 283, 520]);
+    const world = emptyWorld(); const p = world.state.player;
+    const id = addEnemy(world, 'reed', { x: 0, z: 1.2 }, false);
+    world.state.enemies.find(e => e.id === id)!.hp = 1;
+    p.xp = 95;
+    step(world, input({ attack: id }));
+    run(world, 10);
+    expect(p.level).toBe(2);
+    expect(Object.values(p.slots)).toContain('dash');
+    expect(p.hp).toBe(p.stats.maxHp);
+  });
+  it(`레벨 상한 ${MAX_LEVEL}에서는 경험치가 쌓이지 않는다`, () => {
+    const world = emptyWorld(7, profileAt(MAX_LEVEL));
+    const id = addEnemy(world, 'reed', { x: 0, z: 1.2 }, false);
+    world.state.enemies.find(e => e.id === id)!.hp = 1;
+    step(world, input({ attack: id })); run(world, 10);
+    expect(world.state.player).toMatchObject({ level: MAX_LEVEL, xp: 0 });
+  });
+});
+
+describe('저장', () => {
+  it('한 판 뒤 프로필을 저장·불러오면 같은 내용이다', () => {
+    const { state, dungeon } = createRun(starterProfile(), 3);
+    const world = makeWorld(state, dungeon);
+    run(world, 1500, bot);
+    const profile = profileFromRun(world.state, starterProfile());
+    expect(profile.runCount).toBe(1);
+    expect(parseProfile(serializeProfile(profile))).toEqual(profile);
+  });
+  it('손상·버전 불일치·잘못된 슬롯은 null', () => {
+    const good = serializeProfile(starterProfile());
+    expect(parseProfile('{oops')).toBeNull();
+    expect(parseProfile(good.replace('"version":1', '"version":2'))).toBeNull();
+    expect(parseProfile(good.replace('"rmb":"spin"', '"rmb":"fireball"'))).toBeNull();
+    expect(parseProfile(good.replace('"slot":"weapon"', '"slot":"hat"'))).toBeNull();
+    expect(parseProfile(good)).toEqual(starterProfile());
+  });
+});
+
+describe('한 바퀴', () => {
+  it('봇이 시드 3개에서 몹을 처치하며 진행하고 상태가 항상 유효하다', () => {
+    for (const seed of [21, 22, 23]) {
+      const { state, dungeon } = createRun(starterProfile(), seed);
+      const world = makeWorld(state, dungeon);
+      state.player.invulnerableUntil = Infinity; // 생존이 아니라 진행 경로만 본다
+      for (let t = 0; t < 9000 && state.enemies.length > 0; t++) {
+        step(world, bot(world));
+        if (t % 500 === 0) for (const e of state.enemies) expect(isFloor(dungeon, e.x, e.z)).toBe(true);
+      }
+      expect(state.kills).toBeGreaterThan(30);
+      expect(state.player.level).toBeGreaterThan(1);
+    }
+  });
+});
+
+export type { Vec };

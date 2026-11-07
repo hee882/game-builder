@@ -1,31 +1,26 @@
 import type { Vec } from './types';
 
-// 정수 방향 벡터는 런타임 삼각함수 오차와 대각선 속도 증가를 피한다.
-export const DIRECTIONS: readonly Vec[] = [
-  {x:0,z:1000},{x:707,z:707},{x:1000,z:0},{x:707,z:-707},
-  {x:0,z:-1000},{x:-707,z:-707},{x:-1000,z:0},{x:-707,z:707},
-];
-export function direction(index: number): Vec { return DIRECTIONS[((index % 8) + 8) % 8] ?? DIRECTIONS[0]!; }
-export function distanceSquared(a: Vec, b: Vec): number { return (a.x-b.x)**2 + (a.z-b.z)**2; }
-export function heading(from: Vec, to: Vec): number {
-  let best = -Infinity; let result = 0;
-  DIRECTIONS.forEach((dir, index) => {
-    const dot = (to.x-from.x)*dir.x + (to.z-from.z)*dir.z;
-    if (dot > best) { best = dot; result = index; }
-  });
-  return result;
+export function dist2(a: Vec, b: Vec): number { return (a.x - b.x) ** 2 + (a.z - b.z) ** 2; }
+export function dist(a: Vec, b: Vec): number { return Math.sqrt(dist2(a, b)); }
+export function normalize(x: number, z: number): Vec {
+  const length = Math.hypot(x, z);
+  return length < 1e-6 ? { x: 0, z: 1 } : { x: x / length, z: z / length };
 }
-export function move(entity: Vec, facing: number, speed: number): void {
-  const dir = direction(facing);
-  entity.x = Math.max(-11500, Math.min(11500, entity.x + Math.round(dir.x*speed/1000)));
-  entity.z = Math.max(-9500, Math.min(9500, entity.z + Math.round(dir.z*speed/1000)));
+export function direction(from: Vec, to: Vec): Vec { return normalize(to.x - from.x, to.z - from.z); }
+
+/** 부채꼴 판정. dir은 단위 벡터, halfAngle은 라디안. */
+export function inCone(origin: Vec, dir: Vec, target: Vec, range: number, halfAngle: number, targetRadius = 0): boolean {
+  const dx = target.x - origin.x; const dz = target.z - origin.z;
+  const d = Math.hypot(dx, dz);
+  if (d > range + targetRadius) return false;
+  if (d < 0.6 + targetRadius) return true; // 붙어 있는 적은 방향과 무관하게 맞는다.
+  return (dx * dir.x + dz * dir.z) / d >= Math.cos(halfAngle);
 }
-export function inHitbox(from: Vec, facing: number, to: Vec, range: number, shape: string): boolean {
-  if (distanceSquared(from, to) > range*range) return false;
-  if (shape === 'circle') return true;
-  const dir = direction(facing);
-  const x = to.x-from.x; const z = to.z-from.z;
-  const forward = x*dir.x+z*dir.z;
-  const side = Math.abs(x*dir.z-z*dir.x);
-  return forward >= -200000 && side <= (shape === 'thrust' ? 650000 : forward + 700000);
+/** 점과 선분 사이 거리 — 돌진 경로 판정용 */
+export function segmentDistance(a: Vec, b: Vec, p: Vec): number {
+  const abx = b.x - a.x; const abz = b.z - a.z;
+  const len2 = abx * abx + abz * abz;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.z - a.z) * abz) / len2));
+  return Math.hypot(a.x + abx * t - p.x, a.z + abz * t - p.z);
 }
+export function round3(value: number): number { return Math.round(value * 1000) / 1000; }
