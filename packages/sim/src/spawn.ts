@@ -59,7 +59,8 @@ function populateRoom(state: RunState, d: Dungeon, room: Room, index: number): v
   }
 }
 
-export interface RunOptions { extraMobs?: number }
+/** extraMobs: 기본 배치에 더할 수. totalMobs: 부하 측정용으로 보스를 포함한 전체 몹 수를 정확히 맞춘다. */
+export interface RunOptions { extraMobs?: number; totalMobs?: number }
 
 export function createRun(profile: Profile, seed: number, options: RunOptions = {}): { state: RunState; dungeon: Dungeon } {
   const dungeon = generateDungeon(seed);
@@ -84,7 +85,22 @@ export function createRun(profile: Profile, seed: number, options: RunOptions = 
     const kind = pick(state, PACK_KINDS);
     state.enemies.push(makeEnemy(state.nextId++, kind, randomSpot(state, dungeon, room, ENEMIES[kind].radius), state.dungeonLevel, null, -1));
   }
+  if (options.totalMobs !== undefined) fitMobCount(state, dungeon, options.totalMobs);
   return { state, dungeon };
+}
+
+function fitMobCount(state: RunState, dungeon: Dungeon, total: number): void {
+  // 보스는 남기고 뒤에서부터 잘라낸다 — 같은 시드면 같은 구성이 나온다.
+  while (state.enemies.length > Math.max(1, total)) {
+    const index = state.enemies.map(e => e.boss).lastIndexOf(false);
+    if (index < 0) break;
+    state.enemies.splice(index, 1);
+  }
+  const room = dungeon.rooms.find(r => r.kind === 'normal') ?? dungeon.rooms[0]!;
+  while (state.enemies.length < total) {
+    const kind = pick(state, PACK_KINDS);
+    state.enemies.push(makeEnemy(state.nextId++, kind, randomSpot(state, dungeon, room, ENEMIES[kind].radius), state.dungeonLevel, null, -1));
+  }
 }
 
 function cloneItem<T extends { affixes: object[] }>(item: T): T {

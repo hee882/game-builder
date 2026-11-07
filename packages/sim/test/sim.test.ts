@@ -40,6 +40,16 @@ describe('던전 생성', () => {
   });
 });
 
+describe('부하 측정 옵션', () => {
+  it('totalMobs는 보스 포함 전체 몹 수를 정확히 맞춘다', () => {
+    for (const total of [30, 60, 100]) {
+      const { state } = createRun(starterProfile(), 9, { totalMobs: total });
+      expect(state.enemies).toHaveLength(total);
+      expect(state.enemies.filter(e => e.boss)).toHaveLength(1);
+    }
+  });
+});
+
 describe('결정성', () => {
   it('같은 시드·같은 입력 2400틱 → 매 300틱 같은 상태(드랍·난수 포함)', () => {
     const a = createRun(starterProfile(), 42); const b = createRun(starterProfile(), 42);

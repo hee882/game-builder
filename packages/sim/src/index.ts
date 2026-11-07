@@ -13,7 +13,7 @@ export { computeStats, rollItem, starterProfile, affixText } from './loot';
 export { createRun, profileFromRun, makeEnemy } from './spawn';
 export type { RunOptions } from './spawn';
 export { canCast } from './player';
-export { BOSS_WINDUP } from './enemies';
+export { BOSS_WINDUP, TELEGRAPH_RADIUS } from './enemies';
 export { serializeProfile, parseProfile } from './save';
 export type { World } from './combat';
 

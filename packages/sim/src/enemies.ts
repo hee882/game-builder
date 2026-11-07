@@ -7,8 +7,10 @@ import { nextInt } from './rng';
 import type { Enemy, EnemyAttackKind } from './types';
 
 const PLAYER_RADIUS = 0.4;
-const SWEEP_RADIUS = 5;
-const SLAM_RADIUS = 2.5;
+/** 화면이 예고 원을 그릴 때 쓰는 반경. 판정과 같은 값을 공유한다. */
+export const TELEGRAPH_RADIUS = { sweep: 5, slam: 2.5 } as const;
+const SWEEP_RADIUS = TELEGRAPH_RADIUS.sweep;
+const SLAM_RADIUS = TELEGRAPH_RADIUS.slam;
 /** 보스 위험 공격 예고 길이(틱). 완료 기준: 15틱 이상. */
 export const BOSS_WINDUP: Record<'sweep' | 'slam' | 'summon', number> = { sweep: 24, slam: 20, summon: 15 };
 
