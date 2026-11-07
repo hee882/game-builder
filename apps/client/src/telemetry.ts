@@ -1,8 +1,8 @@
-import { CONTENT } from '@yeonmu/sim';
+import { CONTENT, CONTENT_HASH } from '@yeonmu/sim';
 import type { Mode, SimEvent, State } from '@yeonmu/sim';
 import type { PendingInput } from './input';
 
-interface RecordEntry { type:string; at:string; sessionId:string; mode:Mode; build:string; data:unknown }
+interface RecordEntry { type:string; at:string; sessionId:string; mode:Mode; build:string; contentHash:string; data:unknown }
 export class Telemetry {
   readonly sessionId=crypto.randomUUID();
   readonly records:RecordEntry[]=[];
@@ -13,7 +13,7 @@ export class Telemetry {
   storageStatus='로컬 저장 준비';
   constructor(readonly mode: Mode) { this.record('session_start',{contentVersion:CONTENT.version}); }
   record(type:string,data:unknown):void {
-    this.records.push({type,at:new Date().toISOString(),sessionId:this.sessionId,mode:this.mode,build:CONTENT.version,data});
+    this.records.push({type,at:new Date().toISOString(),sessionId:this.sessionId,mode:this.mode,build:CONTENT.version,contentHash:CONTENT_HASH,data});
     if(this.records.length>12000) this.records.shift();
   }
   events(events:SimEvent[]):void {

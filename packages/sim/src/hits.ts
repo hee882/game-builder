@@ -1,6 +1,6 @@
 import { inWindow, nodeById, TIMING } from './content';
 import type { EnemyAttack } from './content';
-import { elapsed, setAction } from './actions';
+import { elapsed, finishPath, setAction } from './actions';
 import { inHitbox, move } from './geometry';
 import type { Enemy, State } from './types';
 
@@ -24,11 +24,13 @@ function hitEnemy(state: State, enemy: Enemy, damage: number, hitstop: number, s
   const frontal = inHitbox(enemy,enemy.facing,p,6000,'arc');
   if (enemy.kind==='shield' && state.tick>=enemy.guardBrokenUntil && frontal && !bypass) {
     state.events.push({type:'shield_block',tick:state.tick,enemy:enemy.id,node:source});
+    finishPath(state);setAction(state,'recovery');
     p.hitstop=Math.max(p.hitstop,2); return;
   }
   if (['hw_dlh','q','f'].includes(source)) enemy.guardBrokenUntil=state.tick+90;
   const boosted = state.tick<p.perfectUntil;
-  enemy.hp=Math.max(0,enemy.hp+ (boosted ? -Math.round(damage*1.25) : -damage));
+  const actualDamage=boosted?Math.round(damage*1.25):damage;
+  enemy.hp=Math.max(0,enemy.hp-actualDamage);
   if (boosted) p.perfectUntil=0;
   p.hitstop=Math.max(p.hitstop,enemy.kind==='hat' && enemy.hp===0?TIMING.hitstopBossFinish:hitstop);
   if (enemy.kind!=='hat') {
@@ -39,7 +41,7 @@ function hitEnemy(state: State, enemy: Enemy, damage: number, hitstop: number, s
     enemy.staggerUntil=state.tick+30;enemy.attack=null;enemy.nextAttack=enemy.staggerUntil;
   }
   if (source==='hw_l4' || source==='hw_llh') move(enemy,p.facing,600);
-  state.events.push({type:'hit',tick:state.tick,enemy:enemy.id,node:source,amount:damage});
+  state.events.push({type:'hit',tick:state.tick,enemy:enemy.id,node:source,amount:actualDamage});
   if (enemy.hp===0) state.events.push({type:'enemy_defeated',tick:state.tick,enemy:enemy.id});
 }
 function skillHits(state: State): void {

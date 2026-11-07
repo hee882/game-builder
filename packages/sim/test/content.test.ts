@@ -17,4 +17,9 @@ describe('30Hz 원천 데이터',()=>{
     expect(validateContent(invalid)).toContain('reed_slash: 예고 최소치');
     expect(validateContent(invalid)).toContain('hw_l1: 없는 간선 missing');
   });
+  it('공통 창과 적 후딜의 소수 틱을 거부한다',()=>{
+    const invalid=structuredClone(CONTENT);invalid.timing.inputBuffer=4.5;invalid.enemyAttacks[0]!.recovery=25.5;
+    expect(validateContent(invalid)).toContain('combat.timing.inputBuffer: 음이 아닌 정수 필요');
+    expect(validateContent(invalid)).toContain('combat.enemyAttacks.0.recovery: 음이 아닌 정수 필요');
+  });
 });

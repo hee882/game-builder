@@ -17,6 +17,12 @@ export const TIMING = raw.timing;
 export const NODES: readonly ComboNode[] = raw.nodes;
 export const ENEMY_ATTACKS: readonly EnemyAttack[] = raw.enemyAttacks;
 export const TICK_MS = 1000 / raw.hz;
+export const CONTENT_HASH = hashContent(JSON.stringify(raw));
+function hashContent(text:string):string {
+  let hash=2166136261;
+  for(let index=0;index<text.length;index++) hash=Math.imul(hash^text.charCodeAt(index),16777619);
+  return (hash>>>0).toString(16).padStart(8,'0');
+}
 export function inWindow(tick: number, window: WindowTicks): boolean {
   return tick >= (window[0] ?? 0) && tick < (window[1] ?? 0);
 }
@@ -33,6 +39,7 @@ export function attackById(id: string): EnemyAttack {
 
 export function validateContent(data: typeof raw = raw): string[] {
   const errors: string[] = [];
+  validateIntegers(data,'combat',errors);
   const ids = new Set(data.nodes.map(node => node.id));
   if (data.hz !== 30) errors.push('전투는 30Hz');
   if ((data.timing.parry[1] ?? 0) - (data.timing.parry[0] ?? 0) < 5) errors.push('튕겨내기 최소 5틱');
@@ -45,6 +52,12 @@ export function validateContent(data: typeof raw = raw): string[] {
     if (attack.damage > 60 || attack.active < 1) errors.push(`${attack.id}: 판정/피해 상한`);
   }
   return errors;
+}
+
+function validateIntegers(value:unknown,path:string,errors:string[]):void {
+  if(typeof value==='number' && (!Number.isInteger(value) || value<0)) errors.push(`${path}: 음이 아닌 정수 필요`);
+  if(typeof value!=='object' || value===null) return;
+  for(const [key,child] of Object.entries(value)) validateIntegers(child,`${path}.${key}`,errors);
 }
 
 function validateNode(node: ComboNode, ids: Set<string>, errors: string[]): void {

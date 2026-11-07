@@ -61,7 +61,7 @@ function attackInput(state: State, command: Command, input: InputFrame): boolean
   const p = state.player; const time = elapsed(state);
   if (state.mode === 'simple' && command === 'heavy') return false;
   if (p.action.kind === 'attack') return transitionAttack(state,command,input);
-  if (p.action.kind === 'dodge' && time >= TIMING.dodgeDuration && time < TIMING.dodgeDuration+TIMING.dodgeCounter) {
+  if (p.action.kind === 'dodge' && p.dodgeChain<3 && time >= TIMING.dodgeDuration && time < TIMING.dodgeDuration+TIMING.dodgeCounter) {
     if (command !== 'light') return false;
     startAttack(state,state.mode==='branch'?'hw_dodge_l':'hw_l1',input.aim); return true;
   }
@@ -113,7 +113,10 @@ export function advanceAction(state: State, input: InputFrame): void {
   if (kind==='skill' && time>=18) setAction(state,'idle');
   if (kind==='recovery' && time>=(p.action.node==='guard_release'?3:p.action.node==='guard_break'?30:TIMING.parryFailure)) setAction(state,'idle');
   const dodgeEnd = TIMING.dodgeDuration + (p.dodgeChain>=3?TIMING.dodgeTired:TIMING.dodgeCounter);
-  if (kind==='dodge' && time>=dodgeEnd) setAction(state,'idle');
+  if (kind==='dodge' && time>=dodgeEnd) {
+    if(p.dodgeChain>=3) p.dodgeChain=0;
+    setAction(state,'idle');
+  }
   if (kind==='attack') finishAttack(state,time);
 }
 function finishAttack(state: State, time: number): void {

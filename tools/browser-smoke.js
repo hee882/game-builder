@@ -32,7 +32,9 @@
     if(render.action!==option.value || !render.clip || render.enemyMeshes!==7) throw new Error(`동작 보기 실패: ${option.value}`);
     previews.push({node:option.value,clip:render.clip});
   }
-  const result={chain,delay,charge,previews,latencyMethod:'자동 입력 스모크 / 물리 디스플레이 지연 아님'};
-  select.value='hw_l4';select.dispatchEvent(new Event('change'));
+  select.value='';select.dispatchEvent(new Event('change'));click('#restart');
+  await until(()=>window.yeonmu.inspect().state.enemies.some(enemy=>enemy.attack));click('#pause');
+  const threats=window.yeonmu.inspect().state.enemies.filter(enemy=>enemy.attack).map(enemy=>enemy.attack);
+  const result={chain,delay,charge,previews,threats,latencyMethod:'자동 입력 스모크 / 물리 디스플레이 지연 아님'};
   return JSON.stringify(result);
 })();

@@ -181,6 +181,13 @@ describe('환도 그래프와 실제 판정',()=>{
       expect(state.player.action.kind).toBe(hold?'guard':'recovery');
     }
   });
+  it('3회 연속 회피 후 12틱 지침은 반격 입력으로 생략할 수 없다',()=>{
+    let state=arena();state.player.dodgeChain=2;state.player.dodgeUntil=40;
+    state=step(state,input(['dodge']));state=tickTo(state,13);
+    state=step(state,input(['light']));expect(state.player.action.kind).toBe('dodge');
+    state=tickTo(state,25);state=step(state,EMPTY_INPUT);
+    expect(state.player.action.kind).toBe('idle');expect(state.player.dodgeChain).toBe(0);
+  });
   it('단순/분기 모드는 같은 적 구성으로 시작하고 지연 분기만 달라진다',()=>{
     expect(createState('simple').enemies).toEqual(createState('branch').enemies);
     const state=actionState('hw_l1',12); state.mode='simple';
