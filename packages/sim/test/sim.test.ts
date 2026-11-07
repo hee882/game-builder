@@ -91,6 +91,37 @@ describe('공유 sim 결정성과 시계',()=>{
 });
 
 describe('환도 그래프와 실제 판정',()=>{
+  it('억새 잔향은 가만히 선 플레이어에게 접근하여 실제 피해를 준다',()=>{
+    let state=arena();state.player.x=0;state.player.z=0;
+    state.enemies=[makeEnemy('reed','reed',0,3000)];
+    for(let i=0;i<180;i++) state=step(state,EMPTY_INPUT);
+    expect(state.player.hp).toBeLessThan(100);
+  });
+  it('그림자 등짐장수는 회피 끝 지점을 예측하고 마지막 6틱에 조준을 고정한다',()=>{
+    let state=arena();state.player.x=0;state.player.z=0;state.player.facing=0;
+    const enemy=makeEnemy('porter','porter',0,-1000);enemy.attack='porter_stab';enemy.attackStart=0;
+    state.enemies=[enemy];state=step(state,input(['dodge']));
+    expect(state.enemies[0]!.target.z).toBeGreaterThan(state.player.z);
+    for(let i=0;i<12;i++) state=step(state,EMPTY_INPUT);
+    const target={...state.enemies[0]!.target};state=step(state,EMPTY_INPUT);
+    expect(state.enemies[0]!.target).toEqual(target);
+  });
+  it('삿갓은 같은 경로 3회 뒤 흉내 반격을 예고하고 다른 경로에서 해제한다',()=>{
+    let state=arena();state.tick=100;state.player.x=0;state.player.z=0;
+    state.player.path=['hw_l1'];
+    state.player.history=[1,2,3].map(tick=>({tick,path:'hw_l1>hw_l2'}));
+    state.enemies=[makeEnemy('hat','hat',0,1500)];
+    state=step(state,EMPTY_INPUT);
+    expect(state.enemies[0]!.attack).toBe('hat_mimic');
+    expect(state.events.some(event=>event.type==='boss_mimic_ready')).toBe(true);
+    state.player.history.push({tick:state.tick,path:'hw_h1'});
+    state=step(state,EMPTY_INPUT);expect(state.enemies[0]!.mimicPath).toBe('');
+  });
+  it('빨강 보스 광역은 튕겨내기로 막을 수 없다',()=>{
+    const state=incoming(0,'hat_sweep');state.enemies[0]!.attackStart=-24;
+    const next=step(state,input(['guard']));
+    expect(next.player.hp).toBe(70);expect(next.events.some(event=>event.result==='parried')).toBe(false);
+  });
   it('기본 4연타, 올려베기, 삼연 찌르기, 지연 내려찍기와 H-H 간선을 재생한다',()=>{
     const routes: [string,number,Command,string][]=[
       ['hw_l1',5,'light','hw_l2'],['hw_l2',5,'light','hw_l3'],['hw_l3',5,'light','hw_l4'],

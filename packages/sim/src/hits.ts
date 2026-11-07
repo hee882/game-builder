@@ -31,8 +31,13 @@ function hitEnemy(state: State, enemy: Enemy, damage: number, hitstop: number, s
   enemy.hp=Math.max(0,enemy.hp+ (boosted ? -Math.round(damage*1.25) : -damage));
   if (boosted) p.perfectUntil=0;
   p.hitstop=Math.max(p.hitstop,enemy.kind==='hat' && enemy.hp===0?TIMING.hitstopBossFinish:hitstop);
-  if (enemy.kind!=='hat') enemy.staggerUntil=state.tick+(hitstop===2?6:12);
-  if (source==='hw_parry_h') enemy.staggerUntil=state.tick+30;
+  if (enemy.kind!=='hat') {
+    enemy.staggerUntil=state.tick+(hitstop===2?6:12);
+    enemy.attack=null;enemy.nextAttack=Math.max(enemy.nextAttack,enemy.staggerUntil);
+  }
+  if (source==='hw_parry_h') {
+    enemy.staggerUntil=state.tick+30;enemy.attack=null;enemy.nextAttack=enemy.staggerUntil;
+  }
   if (source==='hw_l4' || source==='hw_llh') move(enemy,p.facing,600);
   state.events.push({type:'hit',tick:state.tick,enemy:enemy.id,node:source,amount:damage});
   if (enemy.hp===0) state.events.push({type:'enemy_defeated',tick:state.tick,enemy:enemy.id});

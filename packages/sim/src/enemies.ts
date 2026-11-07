@@ -1,5 +1,6 @@
 import { attackById } from './content';
-import { distanceSquared, heading, move } from './geometry';
+import { direction, distanceSquared, heading, move } from './geometry';
+import { elapsed } from './actions';
 import { enemyHits } from './hits';
 import type { Enemy, State } from './types';
 
@@ -32,6 +33,7 @@ function startEnemyAttack(state: State, enemy: Enemy): void {
 function enemyTimeline(state: State, enemy: Enemy): void {
   if (!enemy.attack) return;
   const attack=attackById(enemy.attack); const time=state.tick-enemy.attackStart;
+  if (enemy.kind==='porter' && time<attack.lead) porterFeint(state,enemy,time,attack.lead);
   if (time>=attack.lead && time<attack.lead+attack.active) enemyHits(state,enemy,attack);
   if (time>=attack.lead+attack.active+attack.recovery) {
     enemy.attack=null; enemy.nextAttack=state.tick+10;
@@ -51,16 +53,29 @@ export function updateEnemies(state: State): void {
     const distance=distanceSquared(enemy,state.player);
     const engagement=enemy.kind==='hat'?5500:8500;
     if (distance>engagement**2) continue;
-    if (distance>1800**2) approach(state,enemy);
+    const strikeDistance={reed:1350,shield:1500,porter:1850,hat:2200}[enemy.kind];
+    if (distance>strikeDistance**2) approach(state,enemy);
     else if (state.tick>=enemy.nextAttack) startEnemyAttack(state,enemy);
   }
 }
 function approach(state: State, enemy: Enemy): void {
   const p=state.player;
-  // 자객은 회피의 끝 지점으로 돌아가므로 연속 회피가 안전한 해법이 되지 않는다.
-  const target=enemy.kind==='porter' && p.action.kind==='dodge'
-    ? {x:p.x,z:p.z} : p;
-  enemy.facing=heading(enemy,target);
+  enemy.facing=heading(enemy,p);
   const orbit=enemy.kind==='reed' && distanceSquared(enemy,p)<3500**2 && enemy.sequence%2===0;
   move(enemy,orbit?(enemy.facing+1)%8:enemy.facing,enemy.kind==='hat'?65:enemy.kind==='porter'?105:75);
+  for(const other of state.enemies) {
+    if(other.id!==enemy.id && other.hp>0 && distanceSquared(enemy,other)<650**2) move(enemy,heading(other,enemy),55);
+  }
+}
+
+function porterFeint(state:State,enemy:Enemy,time:number,lead:number):void {
+  const p=state.player;
+  // 마지막 6틱에는 추적을 잠가 예고를 보고 다시 대응할 여유를 남긴다.
+  if(time<lead-6) {
+    const remaining=p.action.kind==='dodge'?Math.max(0,13-elapsed(state)):0;
+    const dir=direction(p.facing);
+    enemy.target={x:p.x+Math.round(dir.x*remaining*290/1000),z:p.z+Math.round(dir.z*remaining*290/1000)};
+    enemy.facing=heading(enemy,enemy.target);
+  }
+  if(time>=lead-6 && distanceSquared(enemy,enemy.target)>1200**2) move(enemy,enemy.facing,170);
 }

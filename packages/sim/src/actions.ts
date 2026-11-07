@@ -12,6 +12,7 @@ export function finishPath(state: State): void {
   const path = p.path.join('>');
   p.history.push({path,tick:state.tick}); p.path = [];
   state.events.push({type:'combo_path',tick:state.tick,path});
+  // 원시 경로도 함께 남겨 분석에서 다른 기간의 다양도를 다시 계산할 수 있다.
 }
 export function startAttack(state: State, id: string, aim: number | null): void {
   const p = state.player;
@@ -58,7 +59,7 @@ function transitionAttack(state: State, command: Command, input: InputFrame): bo
 }
 function attackInput(state: State, command: Command, input: InputFrame): boolean {
   const p = state.player; const time = elapsed(state);
-  if (state.mode === 'simple' && command === 'heavy') return true;
+  if (state.mode === 'simple' && command === 'heavy') return false;
   if (p.action.kind === 'attack') return transitionAttack(state,command,input);
   if (p.action.kind === 'dodge' && time >= TIMING.dodgeDuration && time < TIMING.dodgeDuration+TIMING.dodgeCounter) {
     if (command !== 'light') return false;
