@@ -1,6 +1,6 @@
 # 연무: 잔향의 문 — 기술 스택·온라인 아키텍처 (architecture)
 
-> **문서 상태:** 초안 v0.1 (2026-11-07) · 기술 문서 담당 · 디자인 문서와 교차 검토 전
+> **문서 상태:** 초안 v0.2 (2026-11-07) · 기술 문서 담당 · 디자인 문서 교차 검토 1차 반영(기술 측 수정만) · **독립 검증 전**. 변경 근거와 미해결 항목은 [technical-cross-review.md](../production/technical-cross-review.md).
 >
 > **가칭·제안 주의:** `연무: 잔향의 문 (YEONMU)`은 임시 작업명이고, 조선풍 가상 다크 판타지 배경은 제안 상태다([decision-register.md](../production/decision-register.md)). 이 문서의 스택 결정은 **ADR 제안(Proposed)** 이며 승인되지 않았다.
 >
@@ -47,13 +47,14 @@
 
 | 사용자 요구 | 기술 해석 | 이 문서 위치 |
 |---|---|---|
-| PC 우선 3D 쿼터뷰 액션 RPG | 데스크톱 패키징, 3D 렌더러, 키보드·마우스 입력 | §2, §3 |
+| 3D 액션 RPG(PC 우선은 결정 기록의 **설계 제안**, 쿼터뷰는 디자인 [제안] — 사용자 요구 아님) | 데스크톱 패키징, 3D 렌더러, 키보드·마우스 입력 | §2, §3 |
 | 타격감 중심 전투, 키보드 분기 콤보 | 입력 지연 최소화를 위한 로컬 예측, 히트스톱·피드백은 클라이언트 연출 | §8, §9 |
 | 동작을 바꾸는 전설 무기 | 무기 → 콤보 그래프 ID 매핑을 서버·클라이언트가 같은 데이터로 해석 | §7.4, §14 |
 | 제작 | 재료 소비 + 결과 생성을 한 트랜잭션으로 | §13 |
 | NPC 퀘스트, 중간보스·보스 | 서버 권위 퀘스트 진행, 목표 단위 저장 | §12 |
-| 포탈(귀로등)·웨이포인트 | 룸 간 전환 2단계 예약 | §11 |
-| 마을 20~40명, 필드 12~20명, 던전 1~4명 | 공간별 룸 타입과 정원, 관심 영역(AOI) 관리 | §11 |
+| 포탈(귀로등)·웨이포인트 | 룸 간 전환 2단계 예약, 귀로등 '돌아오는 문' 수명 관리 | §11.3, §11.6 |
+| 마을 20~40명, 던전·절편 필드 1~4명, 후속 공용 필드 12~20명 | 공간별 룸 타입과 정원, 관심 영역(AOI) 관리. 첫 절편 억새벌은 1~4인 파티 인스턴스([quests §2.1](../design/quests.md#party-rules)) | §11 |
+| 보스 기여·인원 스케일링, 재접속 보호 3초(이 행은 사용자 요구가 아니라 코디네이터 지정·디자인 제안) | 전투(encounter) 단위 기여 기록, 참가자 명단 배율, 복귀 보호 | §12 |
 | 채팅 | 서버 경유 채팅, 필터·신고·차단 | §16 |
 | 유료 본편·외형·확장(제안) | Steam 소유권·DLC·마이크로트랜잭션 서버 검증 | §15 |
 
@@ -181,8 +182,8 @@ ADR-001  클라이언트·서버 스택
                         ▼                      ▼
                  [Account/Character Svc]   [Room Servers (Colyseus)]
                         │                   ├ TownRoom   (정원 가설 20~40)
-                        │                   ├ FieldRoom  (정원 가설 12~20)
-                        │                   └ DungeonRoom(1~4, 파티 전용)
+                        │                   ├ DungeonRoom(1~4, 파티 전용 — 절편 억새벌 필드 포함)
+                        │                   └ FieldRoom  (후속 공용 필드, 정원 가설 12~20)
                         │                      │  경제 의도(op)
                         ▼                      ▼
                  [PostgreSQL] ◀──────── [Ledger Svc] ──▶ [Steam Web API]
@@ -225,8 +226,12 @@ ADR-001  클라이언트·서버 스택
 | 룸 | 시뮬레이션 틱(가설) | 이유 | 검증 |
 |---|---|---|---|
 | DungeonRoom | 30Hz, 필요 시 서브스텝 | 콤보 창·패링 창이 수십~150ms 단위라 33ms 해상도가 하한에 가까움. Colyseus는 `setFixedTimestep(step, 30, { subSteps: 2 })` 형태의 서브스텝을 지원 `[공식: docs.colyseus.io/netcode/server-input]` | S4, S6 |
-| FieldRoom | 20~30Hz | 전투 있음, 인원 많음 | S4 |
+| FieldRoom(후속 공용 필드) | 20~30Hz | 전투 있음, 인원 많음. 첫 절편 범위 아님 | S4 |
 | TownRoom | 10~15Hz | 비전투, 이동·감정표현 위주 | S4 |
+
+- 첫 절편의 억새벌 필드(Q-M03·Q-M04)는 **DungeonRoom과 같은 30Hz 파티 인스턴스**로 운영한다(디자인 [quests §2.1](../design/quests.md#party-rules) 정렬 메모 수용) `[제안]`.
+- 30Hz는 **튕겨내기 최소 5틱 제약**(§9.5, 코디네이터 지정)가 성립하는 하한 가설이다. 전투 룸 틱을 30Hz 미만으로 낮추는 최적화는 §9.5 변환 표를 디자인과 재검토·합의하기 전에는 하지 않는다.
+- 마을 개인 수련장(Q-T01·Q-S02·Q-S04)도 전투 판정이 있으므로 TownRoom이 아니라 1인 전투 인스턴스(30Hz)로 둔다 `[제안]`.
 
 틱 레이트와 **스냅샷(패치) 전송률**은 분리한다. Colyseus의 패치 기본값과 변경 방법은 읽은 공식 페이지에서 확인하지 못했다 `[미검증]` — S5에서 확인.
 
@@ -260,8 +265,10 @@ export interface InputFrame {
   moveX: number;        // int8 양자화 -127..127
   moveY: number;
   aimYaw: number;       // uint16 양자화 각도
-  buttons: number;      // 비트마스크: LIGHT, HEAVY, DODGE, PARRY, INTERACT ...
-  pressEdges: number;   // 이 스텝에서 새로 눌린 버튼(박자 분기 판정용)
+  buttons: number;      // 비트마스크(현재 눌림): LIGHT, HEAVY, DODGE, GUARD(탭=튕겨내기/홀드=막기),
+                        // SKILL1..4, RELEASE(잔향 해방), RESPOND(G 응답·상호작용), ITEM1..4, PORTAL(귀로등)
+  pressEdges: number;   // 이 스텝에서 새로 눌린 버튼(박자 분기·튕겨내기 시작 판정용)
+  releaseEdges: number; // 이 스텝에서 떼어진 버튼(강공 차지 해제·탭/홀드 구분용)
 }
 
 export interface HitConfirmed {
@@ -270,8 +277,19 @@ export interface HitConfirmed {
   actionInstanceId: number;  // 예측 이벤트와 매칭
   hitIndex: number;          // 한 동작의 n번째 타격
   damage: number;
-  hitstopTicks: number;      // §9: 액션 로컬 시간 정지량(데이터 테이블 값 그대로)
+  hitstopTicks: number;      // §9: 공격자 actionTick 정지량(§9.5 변환 표의 컴파일 값 그대로)
   serverTick: number;
+}
+
+/** 방어 판정 결과. 판정 근거 틱을 함께 보내 분쟁·리플레이에 쓴다(§10.2). */
+export interface DefenseResolved {
+  defenderId: string;
+  attackId: string;          // 적 공격 데이터 ID (텔레메트리 parry_result{attack_id}와 동일 키)
+  result: 'parried' | 'perfect_dodge' | 'dodged' | 'blocked' | 'hit';
+  attackerEntityId: string;  // 공격한 엔티티(보스·소환물·일반 적). 보스 기여 판정에 사용(독립 검증 F-11)
+  encounterId: string | null;// 공격자가 속한 보스 교전. 교전 밖 적이면 null
+  enemyHitServerTick: number;
+  defenderViewTick: number;  // 방어자 화면 기준으로 환산한 판정 틱
 }
 
 export interface ReliableRequest<TType extends string, TPayload> {
@@ -284,7 +302,9 @@ export interface ReliableRequest<TType extends string, TPayload> {
 ### 7.5 콤보 그래프와 무기 데이터
 
 - 콤보 그래프는 **데이터**(노드: 동작 ID, 입력 조건, 박자 창, 캔슬 창, 히트 프레임)이며 서버·클라이언트가 같은 빌드 산출물(`content/combat/*.json`)을 읽는다. 해시를 핸드셰이크에 포함해 불일치 시 접속 거부 `[제안]`.
-- 전설 무기(잔향구)는 **그래프 패치**(노드 추가·교체)로 표현한다. 장착 변경은 신뢰 요청이며 전투 중 금지 여부는 디자인 결정.
+- 전설 무기(잔향구)는 **그래프 패치**(노드 추가·교체)로 표현한다. 장착 변경은 신뢰 요청이며 **비전투 공간(마을·개인 수련장)에서만 허용**한다(디자인 답, [combat §7](../design/combat-and-items.md#legendaries)). 전투 인스턴스 안에서는 콤보 그래프가 입장 시점 값으로 고정되어 예측·리플레이가 단순해진다. 두 패치가 같은 노드를 바꾸면 디자인 규칙(**무기 > 장신구 > 방어구**, [combat §7](../design/combat-and-items.md#legendaries))대로 빌드 시점에 결정적으로 합성하고, 합성 결과 해시를 장착 확정 응답에 포함한다 `[제안]`.
+- T2 버릇 각인([combat §8.2](../design/combat-and-items.md#crafting))도 같은 그래프 패치 형식으로 표현하고 교체 장소 제한도 같다. 무료 교체는 원장 연산이 아니라 캐릭터 로드아웃 갱신(낙관적 잠금)이고, 각인 해금에 재료가 들 때만 원장 연산이다 `[제안]`.
+- 서버는 플레이어별 **최근 콤보 경로 링 버퍼**(노드 ID + serverTick, 30초분)를 sim 상태로 유지한다. 되돌이 삿갓 흉내(combat §6.2)와 기세 감쇠(combat §9)가 같은 기록을 쓴다. 클라이언트 보고값은 쓰지 않는다(디자인 교차 검토 질문 4 응답).
 - 애니메이션 클립의 프레임 마커는 아트 파이프라인이 사이드카 JSON으로 내보내고, **서버는 GLB를 읽지 않는다**([art-and-animation.md §8](art-and-animation.md#8-glb-계약)).
 
 ---
@@ -344,17 +364,58 @@ export interface ReliableRequest<TType extends string, TPayload> {
 
 ### 9.3 규칙(제안)
 
-1. 히트 확정 시 공격자의 `actionTick`은 `hitstopTicks`(데이터 테이블 값) 동안 진행을 멈춘다. **서버와 클라이언트가 같은 데이터·같은 틱 단위로** 멈추므로 박자 창은 어긋나지 않는다.
-2. 피격자(적)의 경직도 데이터 기반 `actionTick` 정지로 표현한다. 적 AI의 다른 판단(위치 이동 등)은 서버 틱으로 계속 진행.
-3. 클라이언트는 예측 히트 순간 자기 캐릭터의 **표현 시간**을 즉시 멈추고(손맛), 서버 확정이 오면 `actionTick` 정렬을 확인한다. 거부되면 남은 정지를 즉시 해제하고 따라잡는다.
-4. 다른 플레이어의 히트스톱은 **그 엔티티의 표현에만** 적용한다. 화면 전체를 멈추는 히트스톱은 1인 던전에서만 허용할지 디자인과 결정 `[열린 질문]`.
-5. **입력 버퍼(디자인 제안 150ms)와 박자 창은 `actionTick` 기준**으로 정의한다. 벽시계(ms) 기준으로 정의하면 히트스톱 길이에 따라 창이 줄어든다.
-6. 사운드는 정지하지 않는다(타격음은 히트스톱 시작에 재생). 세부는 [art-and-animation.md §5](art-and-animation.md#5-사운드).
+1. 히트 확정 시 **공격자(플레이어)** 의 `actionTick`은 `hitstopTicks`(§9.5 변환 값) 동안 진행을 멈춘다. **서버와 클라이언트가 같은 데이터·같은 틱 단위로** 멈추므로 콤보·캔슬·박자 창은 어긋나지 않는다. 한 히트 프레임에 여러 대상을 맞히면 정지량은 **합이 아니라 최댓값**을 1회 적용한다 `[제안]`.
+2. **적·보스의 `actionTick`은 플레이어 히트스톱으로 멈추지 않는다** `[제안]`. 4인이 같은 보스를 때릴 때 보스 타임라인이 히트스톱마다 밀리면 텔레그래프 리드타임(combat §3.5)과 패턴 박자가 인원수에 따라 변하기 때문이다. 피격 엔티티의 '멈칫'은 표현 시간에서만 보여 준다. 적의 **피격 경직**(combat §3.2의 6·12틱)은 히트스톱과 별개인 게임 규칙 데이터이며, 서버 틱 기준 상태(경직 중 행동 불가)로 판정한다.
+3. 클라이언트는 예측 히트 순간 자기 캐릭터의 **표현 시간**을 즉시 멈추고(손맛), 서버 확정이 오면 `actionTick` 정렬을 확인한다. 거부되면 남은 정지를 즉시 해제하고 재조정 재생으로 따라잡는다.
+4. 다른 플레이어의 히트스톱은 **그 엔티티의 표현에만** 적용한다. **화면 전체 정지형 히트스톱은 쓰지 않는다(1인 인스턴스 포함)** — 디자인 v0.2 제안(교차 검토 합의), [combat §3.1 규칙 4](../design/combat-and-items.md#clocks)로 종결.
+5. **입력 버퍼·박자 창·캔슬 창·튕겨내기 창·회피 무적은 모두 그 플레이어의 `actionTick` 기준**으로 정의한다. 벽시계(ms) 기준으로 정의하면 히트스톱 길이에 따라 창이 줄어든다. 방어자가 히트스톱 중이면 방어 창도 함께 멈춘다(서버 틱으로는 길어짐 — 방어자에게 유리).
+   - **방어 입력(회피·튕겨내기)이 적용된 틱에 그 플레이어의 남은 히트스톱을 즉시 0으로 만들고 방어 동작을 시작한다**(디자인 [combat §3.1](../design/combat-and-items.md#clocks) 규칙 3 수용). 공격 입력은 히트스톱을 끊지 않고 입력 버퍼에 남는다. 결과적으로 튕겨내기 창은 `serverTick`으로 세어도 최소 5틱이다. sim의 결정적 규칙이므로 예측·재생에서도 같은 결과가 나온다.
+   - 튕겨내기·막기는 같은 키의 탭/홀드다. 서버 판정 규칙은 디자인 [combat §3.4](../design/combat-and-items.md#guard-input)를 `pressEdges`·`releaseEdges`(§7.4)로 그대로 구현한다: 누른 틱 = 튕겨내기 0틱째, 창 끝 전 뗌 = 실패 후딜, 창 끝에 누름 유지 = 막기로 전환.
+6. **히트스톱은 피해·명중 결과를 바꾸지 않는다.** 바뀌는 것은 공격자의 이후 타임라인이 서버 틱상에서 늦게 오는 것뿐이다. 디자인 v0.2가 v0.1 문구("판정에는 영향 없음")를 같은 뜻으로 고쳐 X1은 해결됐다.
+7. 서버 틱 기준으로만 흐르는 것: 적 AI·텔레그래프 리드타임, 재접속 보호 3초(§12.2), 쓰러짐 15초·일으키기 3초(combat §6.3), 귀로등 시전 3초·돌아오는 문 60초(§11.6), 기세 감쇠 30초 창. 이들은 히트스톱으로 늘어나지 않는다.
+8. 사운드는 정지하지 않는다(타격음은 히트스톱 시작에 재생). 세부는 [art-and-animation.md §5](art-and-animation.md#5-사운드).
 
 ### 9.4 입력 시점 해석
 
 - 서버는 클라이언트 seq와 고정 스텝 매핑으로 "어느 스텝의 입력인가"를 안다. 클라이언트 벽시계 타임스탬프는 신뢰하지 않는다.
 - 박자 판정은 "입력이 적용된 스텝의 `actionTick`"으로 한다. 지연 때문에 입력이 늦게 도착해도 seq 순서대로 적용되므로 박자 판정 자체는 지연과 무관하다. 단, 버퍼가 비어 서버가 idle 처리한 스텝 이후 늦게 도착한 입력의 처리 정책(버림 / 상한 내 재적용)은 S6에서 결정한다.
+
+### 9.5 60fps 디자인 값 → 30Hz 틱 변환(제안)
+
+디자인 v0.2는 이 규칙으로 환산한 **30Hz 틱 값을 전투 데이터의 원천**으로 삼고, 60fps 프레임·ms는 의도 참고값으로만 남겼다([combat §3.0](../design/combat-and-items.md#tick-units)). 따라서 빌드 단계는 프레임 → 틱 변환기가 아니라 **틱 데이터 검증기**(튕겨내기 창 ≥ 5틱, 텔레그래프 리드타임 최소치, 같은 적 연속 노랑 간격 ≥ 12틱 등)를 둔다. 아래 규칙은 디자인이 새 값을 정할 때 쓰는 공통 환산 규칙이고, 예시 값은 디자인 v0.2 표와 같다. 모두 `[제안]`이며 측정값이 아니다.
+
+**구간 표기:** 모든 창은 반열림 구간 `[시작f, 끝f)`로 읽고, 변환은 경계마다 적용한다. 경계당 오차는 최대 1틱이다.
+
+| 값 종류 | 변환 규칙 | 근거 |
+|---|---|---|
+| 튕겨내기 활성 창 | 시작 내림, 끝 올림, **최소 5틱 하한** | 코디네이터 지정 보존 제약(디자인 `[지정]`, 결정 기록 미등재) — 30Hz에서 최소 5틱 |
+| 회피 무적·완벽 회피·흘려베기 진입 창 | 시작 내림, 끝 올림(바깥쪽 확장) | 방어자 유리(combat §3.6) |
+| 입력 버퍼 | 올림 | 너무 이른 입력도 연결(디자인 의도) |
+| 박자 분기 창(지연) | 시작 내림, 끝 올림. 일반 연결 = 지연 창 시작 전, 리셋 = 지연 창 끝 이후 | "지연 분기를 고르기 쉽게 시작을 내린다" — 디자인 v0.2 제안(교차 검토 합의)([combat §3.2](../design/combat-and-items.md#32-공통-값)) |
+| 캔슬 창 | 시작 내림, 끝 올림 | 연결 유리 |
+| 플레이어 공격 경계 | 판정 시작 내림, 판정 끝 올림, 동작 끝 내림. 판정은 최소 1틱 | 플레이어 유리, 오차 ≤ 1틱 |
+| 적 텔레그래프 리드타임(ms) | **올림**(최소치보다 짧아지지 않게) | combat C2 "최소치 위반 0건" |
+| 적 공격 판정 구간 | 시작 올림, 끝 내림, 최소 1틱 | 방어자 유리 |
+| 히트스톱 | 올림 | 손맛 손실 방지 |
+| 초 단위 규칙값(보호 3초 등) | 정확히 × 30 | 정수로 떨어짐 |
+
+**예시 값(디자인 v0.1 의도값 → v0.2 틱 원천과 일치):**
+
+| 디자인 값 | 60f 구간 | 30Hz 틱 |
+|---|---|---|
+| 튕겨내기 1~9f(150ms) | [1,10) | **[0,5) = 5틱**(167ms), 실패 후딜 20f → 10틱, 성공 후 분기 30f → 15틱 |
+| 튕겨내기 접근성 +50%(225ms) | [1,14.5) | [0,8) = 8틱(올림), 기본 5틱보다 항상 김 |
+| 입력 버퍼 9f(150ms) / 접근성 250ms | — | 5틱 / 8틱 |
+| 약공 L1~L3 선딜 7f·판정 3f·후딜 16f | 판정 [7,10), 끝 26f | 판정 [3,5), 동작 끝 13틱 |
+| 박자: 판정 종료 후 0~15f 일반, 15~30f 지연, 30f 초과 리셋 | — | 판정 종료 후 0~6틱 일반, **7~15틱 지연**, 16틱부터 리셋 |
+| 회피 무적 2~13f, 총 26f | [2,14) | [1,7) = 6틱, 총 13틱 |
+| 완벽 회피: 무적 시작 6f 안 | [2,8) | [1,4) = 3틱 |
+| 히트스톱 약 3f·강 6f·튕겨내기 8f·보스 마무리 12f | — | 2·3·4·6틱 |
+| 텔레그래프 400·600·800·4,000ms | — | 12·18·24·120틱 |
+| 재접속 보호 3초, 귀로등 시전 3초 | — | 각 90틱(서버 틱) |
+
+- 30Hz에서 디자인 의도와 1틱(33ms) 이상 차이가 나면 안 되는 값이 생기면 해당 룸만 60Hz 또는 서브스텝(§7.1)을 검토한다. 비용은 S4로 측정.
+- 전투 애니메이션 클립의 샘플링은 이 틱 표와 1:1로 맞춘다([art-and-animation.md §8.4](art-and-animation.md#84-마커-사이드카animjson)).
 
 ---
 
@@ -362,13 +423,26 @@ export interface ReliableRequest<TType extends string, TPayload> {
 
 이 게임의 실시간 상호작용은 대부분 **PvE**(플레이어 vs 서버 적)다. PvP는 범위 밖이다([concept.md §9](../design/concept.md#scope-out)). 따라서 원칙은 "**상한 안에서 플레이어에게 유리하게**".
 
+### 10.1 판정 규칙
+
 | 판정 | 규칙(제안) | 상한 |
 |---|---|---|
 | 플레이어 → 적 히트 | 공격자가 본 적 위치로 되감아 판정(`rewind.lastSeenBy`) | `maxRewindMs`(프레임워크 기본 500ms). 우리는 더 작게 시작해 S6에서 결정 |
-| 적 → 플레이어 히트, 회피·패링 | 플레이어의 회피·패링 입력 스텝이 적 히트 프레임 이전이면 성공(입력 seq 기준) | 같은 상한. 상한 초과 지연은 실패 처리 |
-| 파티원끼리 | 버프·회복 등 서버 확정 | — |
+| 적 → 플레이어 히트, 회피·튕겨내기 | **방어자 화면 기준**: 적 히트가 일어난 서버 틱을 방어자가 그 공격을 본 시점(`defenderViewTick` = 서버 틱 − 방어자 보간 지연 − 편도 지연 추정)으로 환산하고, 그 시점에 방어자의 튕겨내기 창(최소 5틱)·회피 무적 창이 **열려 있었으면 성공**. 창은 방어자 `actionTick` 기준(§9.3-5) | `maxDefenseRewindMs` 별도 상한(초기안 200ms `[제안]`, S6·C9로 조정). 초과분은 상한 시점으로 잘라 판정 |
+| 파티원끼리 | 버프·회복·일으키기 등 서버 확정 | — |
+
+v0.1의 "입력 스텝이 적 히트 프레임 **이전**이면 성공"은 창의 끝을 검사하지 않아 미리 눌러 두는 악용을 허용하므로 폐기한다.
+
+### 10.2 방어자 유리 판정의 구현(제안)
+
+1. 적 히트가 플레이어에게 닿는 서버 틱 H에 서버는 피해를 **즉시 확정하지 않고 보류 목록**에 넣는다. 보류 길이 D = min(방어자 측정 지연 기반 되감기량, `maxDefenseRewindMs`)를 틱으로 올림.
+2. 보류 중 도착한 방어자 입력(seq 순서)을 재생해, 환산 시점 기준으로 튕겨내기·회피가 성립하면 피해 취소 + `DefenseResolved{parried|dodged}` 전송. 아니면 H + D 틱에 피해 확정.
+3. 피격 반응(경직·넉백)은 확정 시점에 적용되므로 고지연 플레이어는 피격 반응이 최대 D만큼 늦게 보인다. 이 지연은 C9 체감 테스트 항목에 포함한다.
+4. 보류가 있어도 **적 타임라인은 멈추지 않는다**(§9.3-2). 같은 적의 다음 공격은 예정대로 진행한다.
+5. 체감 리드타임: 방어자 화면의 텔레그래프는 보간 지연 + 편도 지연만큼 늦게 시작한다. 데이터 검사(C2)는 서버 리드타임을 검사하고, 체감 리드타임은 위 보류(D)가 보상한다. 상한을 넘는 지연에서는 체감 리드타임이 최소치보다 짧아질 수 있다. 디자인 게이트 C12(RTT 150ms까지 최소치의 75% 이상, [combat §10](../design/combat-and-items.md#combat-gates))는 `DefenseResolved`의 `enemyHitServerTick`·`defenderViewTick`과 클라이언트의 예고 표시 시각으로 계측한다. 초기안 200ms 상한이 C12를 만족하는지는 S6 전에는 알 수 없다 `[가정]`.
 
 - 고지연 플레이어가 상한 끝에서 회피에 성공하면, 다른 파티원 화면에선 "맞았는데 안 맞은" 장면이 보일 수 있다. PvE에선 허용 범위로 본다(디자인 교차 검토 항목 2 응답).
+- 접근성 '튕겨내기 창 +50%'(combat §5.2)는 플레이어가 직접 켜는 설정이며 PvE 파티 콘텐츠에서도 허용(디자인 v0.2 제안(교차 검토 합의) 수용, combat §3.6·§5.2). 서버는 그 플레이어의 설정값을 접속 시 받아 해당 플레이어의 창에만 적용한다.
 - 지역: 첫 출시 리전 1곳 가설(한국어 우선이므로 동북아 리전 후보) `[제안]`. 다른 지역 플레이어 RTT는 측정 후 지역 추가 결정.
 - 매칭은 같은 리전 우선, 파티 초대는 리전 무관 허용하되 RTT 경고 표시.
 - 지연 표시: 화면에 RTT·손실 아이콘. 높은 지연에서 패링 창을 늘리는 **자동 보정은 하지 않는다**(악용 가능).
@@ -382,9 +456,11 @@ export interface ReliableRequest<TType extends string, TPayload> {
 | 타입 | 정원(가설) | 생성 | 해체 | 영속 |
 |---|---|---|---|---|
 | TownRoom (채널) | 목표 20~40, 하드캡은 S4 측정 후 | 기존 채널 점유율이 상한 근접 시 새 채널 | 비어 있고 유예 경과 | 없음(위치는 체크포인트) |
-| FieldRoom | 12~20 | 마을 채널과 연계 또는 독립 | 동일 | 공개 이벤트 진행 상태는 룸 수명 동안만 |
-| DungeonRoom | 1~4, 파티 전용 | 입장 시 | 파티 전원 이탈 + 재접속 유예 종료 | 런 ID, 체크포인트, 보상 지급 기록 |
-| SoloStoryRoom | 1 | 튜토리얼·컷신 | 종료 시 | 퀘스트 진행만 |
+| FieldRoom(후속) | 12~20 | 마을 채널과 연계 또는 독립 | 동일 | 공개 이벤트 진행 상태는 룸 수명 동안만. **첫 절편 범위 아님** |
+| DungeonRoom | 1~4, 파티 전용(절편 억새벌 필드 포함) | 입장 시 | 파티 전원 좌석 해제(접속 이탈 + 재접속 예약 180초 만료, 귀로등 이탈 좌석 포함 — §11.6) | 런 ID, 체크포인트(등불), 완료 목표에 대응하는 인스턴스 상태 플래그, 보상 지급 기록 |
+| SoloStoryRoom | 1 | 튜토리얼·컷신·개인 수련장 | 종료 시 | 퀘스트 진행만 |
+
+- 인스턴스를 새로 만들 때는 파티원 각자의 **완료 목표**에 대응하는 상태(열린 문, 빠진 물, 켜진 등불)를 완료된 상태로 생성한다([quests §2.3](../design/quests.md#reconnect)). 파티원 간 진행이 다르면 **한 명이라도 완료한 공유 상태는 완료로 생성**한다. 그 공유 목표가 아직 active인 파티원은 입장 시 공유 상호작용 크레딧을 받고, 처치·보스 목표는 미리 완료되지 않는다(디자인 [quests §2.3](../design/quests.md#reconnect)이 X5 제안 수용) `[제안]`.
 
 ### 11.2 할당 규칙
 
@@ -393,38 +469,111 @@ export interface ReliableRequest<TType extends string, TPayload> {
 
 ### 11.3 전환 프로토콜(포탈·귀로등·던전 입장)
 
-2단계 예약. 모든 단계는 `transitionId`(UUID)로 멱등.
+모든 공간 이동(귀로등, 돌아오는 문 왕복, 던전 입장, 웨이포인트, 재접속 복구 배치)은 아래 두 식별자로 표현한다. v0.2 초안은 하나의 `transitionId`가 두 역할을 겸해 재시도와 원장 멱등이 충돌했다(독립 검증 F-01). 모두 `[제안]`.
+
+#### 11.3.1 식별자 분리
+
+| 식별자 | 형식 | 의미 | 쓰는 곳 | 쓰면 안 되는 곳 |
+|---|---|---|---|---|
+| `transitionId` | UUIDv7, 서버 발급 | **논리 전환 1건의 정체성.** 캐릭터 1명의 "A에서 B로 간다" 의도 하나. 재시도해도 바뀌지 않는다 | 전환 레코드(`transitions` PK), 원장 키(`portal:`·`portal_refund:`·`grant:portal_oil_refill:…:{arrivalTransitionId}`), 체크포인트(`Checkpoint.transitionId`), `load()`, 텔레메트리·로그 상관 ID | Allocator 예약·좌석 토큰의 멱등 키(취소된 예약이 되돌아옴) |
+| `attemptKey` | `{transitionId}:{attempt}`, `attempt`는 1부터 | **좌석 확보 시도 1회.** 예약 실패·토큰 TTL 만료·파티 재시도마다 `attempt + 1` | Allocator `reserve()`, 좌석 예약 레코드, `seatToken`, `join()` 재시도 | 원장 키·체크포인트(시도마다 기름이 다시 차감되거나 체크포인트가 갈라짐) |
+| `requestId` | 클라이언트 UUID | 클라이언트 요청 중복 제거(더블클릭·재전송) | `(characterId, requestId)` 고유 제약 → 같은 `transitionId` 반환 | 그 밖의 모든 곳 |
+
+- 파티 동반 전환(던전 입장)은 **파티원 1명당 `transitionId` 1개**를 만들고 공통 `partyTransitionGroupId`로 묶는다. 시도 번호는 그룹 단위로 함께 올라간다(§11.4).
+- 같은 규칙을 단독 귀로등, 돌아오는 문(현장 쪽 따라오기·마을 쪽 복귀), 웨이포인트 이동, 재접속 복구 배치에도 적용한다. 기름을 쓰지 않는 전환도 `transitionId`·`attemptKey`를 가진다(체크포인트·도착 보충 키에 필요).
+
+#### 11.3.2 흐름
 
 ```text
-Client          SourceRoom         Allocator          Character Svc       TargetRoom
-  │ usePortal(reqId) │                  │                    │                  │
-  │─────────────────▶│ 조건 검증(퀘스트·파티 준비·전투 중 아님)          │
-  │                  │ reserve(transitionId, party) ─▶│        │                  │
-  │                  │                  │ 대상 선택/생성, 좌석 예약(TTL) ───────▶│
-  │                  │ checkpoint(transitionId, 위치·HP·버프) ─▶│                │
-  │                  │                  │                    │ 커밋              │
-  │◀─ seatToken(서명, TTL, transitionId) ─│                    │                  │
-  │ 연결 종료(소스)   │ 플레이어 엔티티 '이동 중' 표시 후 제거                  │
-  │──────────────────────────────── join(seatToken) ─────────────────────────────▶│
-  │                  │                  │                    │◀─ load(transitionId)
-  │◀────────────────────────────────── 입장 완료 ─────────────────────────────────│
+Client          SourceRoom            Ledger/Character DB         Allocator            TargetRoom
+  │ usePortal(requestId) │                      │                       │                    │
+  │─────────────────────▶│ 조건 검증(보스방 아님·시전 90틱 완료)        │                    │
+  │                      │ open(transitionId) ─▶│ BEGIN                 │                    │
+  │                      │                      │  transitions INSERT (state=pending)        │
+  │                      │                      │  ledger portal:{transitionId} (기름 −1)    │
+  │                      │                      │ COMMIT                │                    │
+  │                      │ reserve(attemptKey=T:1, transitionId) ──────▶│ 대상 선택, 좌석 예약(TTL)
+  │                      │ commit(transitionId, 위치·HP·버프) ─▶│ BEGIN                     │
+  │                      │                      │  transitions UPDATE state=committed        │
+  │                      │                      │    WHERE state=pending   (펜스)            │
+  │                      │                      │  checkpoint 저장(transitionId)              │
+  │                      │                      │ COMMIT                │                    │
+  │◀─ seatToken(서명, TTL, attemptKey, transitionId) ───────────────────│                    │
+  │ 연결 종료(소스)       │ 엔티티 '이동 중' 표시 후 제거                 │                    │
+  │──────────────────────────────── join(seatToken) ─────────────────────────────────────────▶│
+  │                      │                      │◀── load(transitionId) ─────────────────────│
+  │                      │                      │  transitions UPDATE state=arrived           │
+  │                      │                      │  (마을·웨이포인트 도착이면 기름 보충 연산)     │
+  │◀──────────────────────────────────────── 입장 완료 ─────────────────────────────────────│
 ```
+
+#### 11.3.3 전환 레코드 상태와 기름(독립 검증 F-02 — 코디네이터 제안, 사용자 미승인)
+
+```text
+pending ──commit 성공──▶ committed ──load 성공──▶ arrived
+   │
+   └──종결 실패──▶ compensated   (pending에서만 진입, 이후 commit 금지)
+```
+
+| 규칙 | 내용 |
+|---|---|
+| 기름은 논리 전환당 1회 | 귀로등 시전 완료 시 `transitions` 생성과 `portal:{transitionId}` 차감을 **한 DB 트랜잭션**으로 커밋. 같은 `transitionId`의 시도(`attempt` 2, 3, …)는 추가 차감 없음 |
+| 일시 실패는 무료 재시도 | 예약 실패(정원·생성), 예약 TTL 만료, 커밋 전 대상 룸 크래시 → 같은 `transitionId`, 새 `attemptKey`로 자동 재시도. 상한 `[제안]`: 시도 3회 또는 `pending` 생성 후 30초 중 먼저 오는 쪽 |
+| 종결 실패 = 정확히 1회 보상 | 상한 초과, 체크포인트 저장의 확정적 실패, 플레이어 취소(커밋 전), 소스 측 취소 → 한 DB 트랜잭션에서 `transitions UPDATE state=compensated WHERE state=pending` **와** 원장 `portal_refund:{transitionId}`(기름 +1). 행이 갱신되지 않으면(이미 committed·compensated) 환불하지 않는다. 플레이어는 소스에 머문다 |
+| 보상 후 커밋 금지 | commit은 `WHERE state=pending` 펜스를 통과해야 한다. compensated 레코드에 대한 commit·`load()`는 거부되고, 그 `attemptKey`의 좌석 예약은 해제된다. 늦게 도착한 `seatToken`은 대상 룸 `onAuth`에서 레코드 상태(`committed`)를 확인해 거부 |
+| 커밋 후 실패는 환불 없음 | committed 이후의 접속 실패·토큰 TTL 만료는 **같은 `transitionId`로 새 시도**를 대체 목적지(체크포인트 기준 마지막 안전 마을, 귀로등이면 원래 목적지인 마을)로 발급한다. 이미 이동이 성립했으므로 환불하지 않는다 |
+| 기름 없는 전환 | 돌아오는 문·던전 입장·웨이포인트·재접속 복구는 같은 상태 기계를 쓰되 원장 연산이 없으므로 `compensated`는 상태 기록만 남긴다 |
+
+**커밋·타임아웃 경합.** commit 요청이 응답 없이 타임아웃되면 소스는 결과를 모른다. 소스는 새 키를 만들지 않고 **같은 `transitionId`로 commit을 재시도**한다(이미 committed면 멱등 성공 응답). 동시에 상한 타이머가 보상을 시도해도 두 연산 모두 `transitions` 행의 상태 비교 갱신(`WHERE state=pending`)을 거치므로 **둘 중 정확히 하나만** 이긴다. commit이 이기면 보상은 무효 처리되고 플레이어는 이동한다. 보상이 이기면 commit은 `compensated` 응답을 받고 소스는 플레이어를 남겨 둔다. 상태 비교 갱신과 원장 연산이 같은 PostgreSQL 트랜잭션이라 "환불됐는데 이동함"과 "이동 못 했는데 차감됨"이 모두 불가능하다.
+
+**대사(reconciliation).** 주기 작업이 다음을 검사·복구한다(모두 같은 펜스 사용).
+
+| 검사 | 조치 |
+|---|---|
+| `pending`이 상한(30초 + 여유) 넘게 남음 | 보상 시도(`WHERE state=pending`) |
+| `committed`인데 `arrived`가 TTL + 여유 넘게 없음 | 같은 `transitionId`로 대체 목적지 시도 발급, 다음 로그인 시 배치. 환불 없음 |
+| 불변식 | 기름 차감된 전환마다 `arrived`/`committed` 또는 `compensated + portal_refund` 정확히 하나. `portal_refund`는 `compensated` 레코드에만 존재. 위반은 경보(§17.1 원장 불변식 위반 수) |
+
+#### 11.3.4 실패 표
 
 | 실패 지점 | 처리 |
 |---|---|
-| 예약 실패(정원·생성 실패) | 소스에 머무름, 에러 표시, 체크포인트 미작성 |
-| 체크포인트 저장 실패 | 예약 취소, 소스에 머무름 |
-| 토큰 발급 후 클라이언트가 대상 접속 실패 | 토큰 TTL 내 재시도. TTL 만료 시 **체크포인트 기준 마지막 안전 마을**로 복귀 |
-| 대상 룸 크래시 | 클라이언트 재접속 시 Allocator가 새 룸 배정, 체크포인트 로드 |
-| 같은 transitionId 재요청 | 기존 예약·토큰 반환(중복 생성 금지) |
+| 예약 실패(정원·생성 실패) | 같은 `transitionId`, `attempt + 1`로 재시도. 상한 초과 시 종결 실패 → 보상(§11.3.3), 소스에 머무름 |
+| 체크포인트 저장 실패(확정적) | 해당 `attemptKey` 예약 취소, 종결 실패 → 보상 |
+| commit 타임아웃(결과 불명) | 같은 `transitionId`로 commit 재시도. 보상과의 경합은 펜스가 결정 |
+| 토큰 발급 후 클라이언트가 대상 접속 실패 | 토큰 TTL 내 같은 `attemptKey`로 재시도. TTL 만료 시 같은 `transitionId`·새 `attemptKey`로 대체 목적지(체크포인트 기준 마지막 안전 마을) |
+| 대상 룸 크래시(커밋 후) | 재접속 시 Allocator가 새 `attemptKey`로 새 룸 배정, 체크포인트 로드 |
+| 소스 룸 크래시(커밋 전) | 전환은 `pending`으로 남고 대사 작업이 보상(기름 1회 반환). 플레이어는 출발 공간에 남을 수 없으므로 재접속 복구 규칙(§12.2 — 인스턴스가 사라졌으면 마지막 등불 체크포인트)으로 배치되며, 이 배치는 별도 `recovery` 전환이다. 디자인 문구 "출발 공간에 남으면 반환"의 예외로 기록(technical-cross-review §8) |
+| 같은 `attemptKey` 재요청 | 기존 예약·토큰 반환(중복 생성 금지). 취소·만료된 시도면 그 결과를 반환 |
+| 같은 `requestId` 재요청 | 기존 `transitionId`와 현재 상태 반환(새 전환·새 차감 없음) |
 
 ### 11.4 파티 동반 전환
 
-- 던전 입장: 파티장이 요청 → 전원 '준비' 상태 확인 → 파티 단위 예약(좌석 n개) → 각자 토큰. 일부 실패 시 성공한 인원만 입장할지, 전원 취소할지는 디자인 결정 `[열린 질문]` — 기본안은 **전원 취소 후 재시도**.
+- 던전 입장: 파티장이 요청 → 전원 '준비' 상태 확인 → 파티원별 `transitionId` 생성(공통 `partyTransitionGroupId`) → 그룹 단위 예약(좌석 n개, 각 `attemptKey = {transitionId}:{attempt}`) → 각자 토큰.
+- 일부 실패(디자인 답 [quests §2.5](../design/quests.md#25-마을에서의-파티-형성)): 그룹의 현재 시도 전원 취소 → **자동 재시도 1회**(그룹 전원 `attempt + 1`, `transitionId` 유지) → 그래도 일부 실패면 성공 가능 인원에게 "지금 입장 / 함께 다시 시도" 선택. 먼저 들어가면 실패한 파티원의 좌석을 180초 예약으로 남기고, 그 파티원은 **자기 `transitionId`의 다음 시도**로 나중에 합류한다. 던전 입장에는 기름이 없으므로 보상 연산은 없다.
+- 디자인 문구(quests §2.5)는 이미 "같은 논리 요청의 재시도 = 새 시도 키"로 갱신되어 X11은 종결됐다(독립 검증 F-07).
 
 ### 11.5 관심 영역(AOI)
 
 마을 40명이면 모든 엔티티를 모두에게 보내지 않아도 될 수 있다. 셀 그리드 기반 AOI로 원거리 플레이어는 낮은 빈도 갱신 `[제안]`. Colyseus 스키마의 클라이언트별 필터링 방식은 `[미검증]` — S4에서 확인.
+
+### 11.6 귀로등(타운 포탈)과 돌아오는 문
+
+디자인 규칙([quests §2.6](../design/quests.md#portal), [combat §2.1](../design/combat-and-items.md#input))을 다음 서버 상태로 옮긴다. 모두 `[제안]`.
+
+| 디자인 규칙 | 서버 표현 |
+|---|---|
+| 마을 밖 어디서든 사용(전투 중 포함), 보스방·튜토리얼 1인 공간·결정적 선택 장면 불가 | 룸 영역 태그 `bossArena`·`noPortal`이면 시전 거부. v0.1의 "전투 중 아님" 조건 폐기 |
+| 시전 3초, 확정 피해 시 취소, 취소 시 기름 미소모 | sim 상태 `portalCast{startTick}`. 서버 틱 90틱 동안 **확정 피해**(§10.2 보류 종료 후)가 없으면 완료. 히트스톱으로 늘어나지 않음. 시전 시작 시 보유량 ≥ 1을 확인하고, 기름 차감은 **시전 완료 시 전환 레코드 생성과 같은 트랜잭션에서 1회**(§11.3.3). 시전 취소는 전환을 만들지 않으므로 차감도 없음 |
+| 현장 쪽 문 60초, 같은 파티원이 따라 마을로 | 문 주인의 전환이 **committed** 된 틱에 소스 인스턴스에 `returnGate{gateId, ownerId, ownerTransitionId, partyId, expiresTick = +1800틱}` 생성(보상으로 끝난 전환에는 문이 생기지 않음). 따라오는 파티원은 **자기 `transitionId`** 로 §11.3 전환(기름 없음, 마을 할당 1순위 = 문 주인이 있는 채널) |
+| 내 좌석 180초 귀로 예약, 마을 쪽 문은 예약이 살아 있는 동안 나만 사용 | 문 주인의 전환이 **committed** 된 틱에 소스 좌석을 **'귀로 이탈' 예약**으로 바꾼다(재접속 예약과 같은 180초 메커니즘 재사용). 전환이 `compensated`로 끝나면 귀로 예약·현장 쪽 문 모두 만들어지지 않는다(디자인 quests §2.6 '기름 청구와 전환 실패' ③과 일치). 마을 측 문은 주인 전용, 예약 유효 동안 존재 → 같은 인스턴스·같은 위치로 전환 + **재접속 보호 3초 적용**(§12.2) |
+| 예약 만료·인스턴스 종료 후 | 마을 측 문 제거. 재입장은 해당 구역 **마지막 등불 체크포인트**로 새 인스턴스 생성(완료 목표 상태 반영, §11.1) |
+| 보스 교전 중 귀환 | 그 교전의 참가자가 아니므로 보스방 문 앞(체크포인트 C)에 배치, 교전 종료 대기(§12.4) |
+| 등불 기름 처음 10개 무료, 0개면 마을·웨이포인트 도착 시 1개 보충(도착 1회당 최대 1개) | 소모 `portal:{transitionId}`(논리 전환당 1회), 종결 실패 보상 `portal_refund:{transitionId}`(1회, §11.3.3), 시작 지급 `grant:portal_oil_starter:{characterId}` 1회, 보충 `grant:portal_oil_refill:{characterId}:{arrivalTransitionId}` — `arrivalTransitionId`는 도착한 전환의 **논리 `transitionId`**(시도 키 아님)이고, `load()` 성공(`arrived`) 시점에 적용. 보충 연산 안에서 현재 보유량 = 0을 검사(행 잠금)해 연속 도착으로 2개 이상 쌓이지 않게 함 |
+| 점화한 웨이포인트 간 이동은 마을에서 기름 없이 | 웨이포인트 이동은 원장 연산 없는 일반 전환(§11.3, 자기 `transitionId`·`attemptKey`) |
+
+- 귀로등 이탈 좌석이 남아 있는 동안 파티장은 그 자리에 새 인원을 초대할 수 없다(재접속 예약과 동일, quests §2.3).
+- v0.1 기술 질의 X6(마을 측 문 수명, 기름 재충전 시점)은 디자인 [quests §2.6](../design/quests.md#portal)로 해결됐고, 위 표는 그 규칙을 옮긴 것이다.
 
 ---
 
@@ -439,22 +588,70 @@ Client          SourceRoom         Allocator          Character Svc       Target
 | 퀘스트 진행 | Character Svc | 목표 단위 커밋 | 마지막 커밋 목표로 복원 |
 | 파티 구성·파티장 | Party Svc | Redis + 주기 저장 | 영향 없음 |
 | 위치·HP·버프 | 룸 | 전환·주기 체크포인트 | 마지막 체크포인트 |
-| 던전 런(보스 페이즈 등) | DungeonRoom | 체크포인트 이벤트만 | 런 실패 처리, 입장 재료 보상 정책(§13.6) |
-| 공개 이벤트 진행 | FieldRoom | 없음 | 소실(기여도 보상은 확정분만) |
+| 공간 전환(`transitions`) | Allocator + Character Svc | PostgreSQL(상태 비교 갱신) | 영향 없음 — pending은 대사 작업이 보상, committed는 대체 목적지 배치(§11.3.3) |
+| 던전 런(보스 페이즈 등) | DungeonRoom | 체크포인트 이벤트만 | 런 실패 처리. 재입장 시 마지막 등불 체크포인트 + 완료 목표 상태로 재생성. 현재 디자인에는 입장 재료가 없음(§13.6) |
+| 전투 기여·배율(encounter) | DungeonRoom | 룸 메모리(보스 처치 시 원장 연산 컨텍스트로 기록) | 소실 → 보스 초기화와 동일 취급 |
+| 공개 이벤트 진행(후속) | FieldRoom | 없음 | 소실(기여도 보상은 확정분만) |
 
 ### 12.2 재접속
 
-- Colyseus `onDrop` → `allowReconnection(client, seconds)`로 좌석 유지 `[공식: docs.colyseus.io/room/reconnection]`. 디자인 제안 **180초**를 기본값 후보로 둔다.
-- 유예 동안 캐릭터는 **방어 상태로 남는다**(적 어그로 해제·피해 감소 등 디자인 결정). 보스전 중 재입장 차단은 디자인 요구이며, 서버는 "보스 페이즈 진행 중" 플래그로 신규 입장만 막고 **기존 좌석 재접속은 허용**한다 `[제안 — 디자인 확인 필요]`.
-- 유예 만료: `onLeave` → 체크포인트 기준 마을로 이동, 파티 유지(파티 서비스 소유). 던전 좌석 반환.
+디자인 [quests §2.3](../design/quests.md#reconnect) 정렬. 모든 시간은 **서버 틱** 기준이며 히트스톱으로 늘어나지 않는다(§9.3-7). 표의 수치는 디자인 제안값을 그대로 쓰는 `[제안]`이다.
+
+| 단계 | 디자인 규칙 | 서버 표현 |
+|---|---|---|
+| 끊김 감지 | — | Colyseus `onDrop` `[공식: docs.colyseus.io/room/reconnection]`. 비정상 단절(케이블 분리 등)은 전송 계층 타임아웃 전까지 감지되지 않을 수 있다 `[미검증 — 감지 지연은 S5에서 측정]`. 감지 지연 동안 캐릭터는 입력 없음(idle)으로 처리 |
+| 감지 후 5초 | 제자리에 남음, **평소처럼 피격 가능**(맞기 직전 끊기 악용 방지), 그 사이 쓰러지면 쓰러짐 규칙 | 150틱 동안 엔티티 유지, 일반 판정 |
+| 이후 '잔상' | 피격·어그로·이름 부르기 대상 아님, 반투명, **생존 인원으로 세지 않음** | 상태 `afterimage`: 적 타깃 후보·히트 판정·이름 부르기 대상·전멸 판정의 생존자에서 제외 |
+| 자리 예약 180초 | 파티 슬롯·좌석 예약, 예약 중 초대 불가 | `allowReconnection(client, 180)` 후보 + 파티 서비스 슬롯 잠금 |
+| 예약 내 복귀(일반 구간) | 마지막 등불에서 복귀, 체력은 끊길 때 값, **재접속 보호 3초** | 좌석 재연결 후 마지막 등불 체크포인트로 배치, 보호 적용 |
+| 예약 내 복귀(보스전 중) | 신규 입장 차단, **그 교전 참가자 명단**의 복귀만 허용, 보스방 안쪽 입구에 보호 3초로 합류. 교전 시작 전에 끊긴 사람은 문 앞(체크포인트 C)에서 대기 | 참가자 명단은 §12.4. 아래 '재접속 보호 3초' 규칙 |
+| 예약 만료 | 슬롯 해제, 재접속 시 마을 | `onLeave` → 체크포인트 기준 마을, 파티 유지(파티 서비스 소유), 좌석 반환 |
+| 파티원 전원 끊김 | 인스턴스 180초 유지 후 종료, 보스전 중이면 보스 초기화 | 마지막 좌석 예약 만료 시 룸 해체. 접속자 0명이 된 순간 보스 encounter를 초기화 대기 상태로 두고 첫 복귀자 입장 전에 초기화 `[제안]` |
+
+**재접속 보호 3초(코디네이터 지정 보존 제약 = 디자인 `[지정]`. 결정 기록에 사용자 승인으로 오르기 전까지 `[요구]`가 아님. 값 3초는 기술 측에서 바꾸지 않음):**
+
+- 길이: 90 서버 틱. **시작 시점은 복귀 클라이언트의 준비 신호**다(로딩 시간이 보호를 잠식하지 않도록) `[제안]`.
+- **보호 시작 전(로딩 구간) 상태 — 독립 검증 F-04:** 좌석이 재연결된 틱부터 보호가 시작될 때까지 엔티티는 **`afterimage` 상태를 유지**한다: 비표적·피격 없음·어그로·이름 부르기·전멸 판정의 생존자에서 제외, **입력 무시**. 따라서 로딩 중에 맞지 않고, 로딩을 늦춰도 행동할 수 없으므로 이득이 없다(전멸 판정에서도 생존자로 세지 않음).
+- **준비 신호(핸드셰이크):** 다음 중 **가장 이른 틱**에 `afterimage`를 끝내고 보호 90틱을 시작한다. ① 클라이언트의 '첫 스냅샷 적용 완료' 응답, ② 재연결 후 서버가 받은 **첫 `InputFrame`**(입력을 보낼 수 있으면 화면이 준비된 것으로 본다), ③ 재연결 후 150틱(강제 시작 — 응답이 영영 없어도 무한 비표적이 되지 않게). ②로 시작한 경우 그 첫 프레임은 이동만 적용하고 `pressEdges`의 행동 입력은 버린다(첫 입력이 공격이어서 보호가 시작 즉시 끝나는 일을 막음).
+- 상한: 재연결부터 보호 종료까지 비표적 구간은 최대 150 + 90 = 240틱(8초)이다. 이 구간에 행동할 수 있는 시간은 보호 90틱뿐이고, 행동하면 보호가 즉시 끝난다.
+- 효과: 무적, 피해·잡기·이름 부르기 대상 제외, 적 어그로 대상 제외. 표현은 반투명 + 테두리.
+- 조기 종료(디자인 v0.2 제안(교차 검토 합의), [quests §2.3](../design/quests.md#reconnect)): **공격·기술·잔향 해방·일으키기·상호작용** 입력이 적용된 틱에 즉시 해제. 이동·막기·회피는 보호를 유지.
+- 적용 범위(디자인 v0.2 제안(교차 검토 합의)): 전투 인스턴스로의 **모든 재접속 복귀**(일반 구간·보스전) + **귀로등 마을 측 문으로 전투 인스턴스에 돌아올 때**(§11.6). 던전 입장·웨이포인트 이동 같은 일반 전환에는 적용하지 않는다.
+- 보스 처치 후 처음 보는 사람의 **개인 컷신(최대 60초)** 동안에도 같은 무적·비표적 상태를 쓴다(quests §2.4). 컷신 상태는 보호 3초와 별개 타이머다.
+
 - 클라이언트 크래시와 네트워크 끊김을 구분하지 않는다(서버는 알 수 없음).
-- 프로세스 재시작으로 룸이 사라진 경우 재접속 토큰은 무효 → Allocator 경유 복구.
+- 프로세스 재시작으로 룸이 사라진 경우 재접속 토큰은 무효 → Allocator 경유 복구(마지막 등불, 보스 초기화).
 
 ### 12.3 퀘스트 진행
 
-- 퀘스트는 목표(objective) 단위로 이벤트를 받는다: `ObjectiveProgressed(questId, objectiveId, delta, sourceEventId)`.
-- `sourceEventId`(예: 처치 이벤트 ID)로 중복 반영 방지.
-- 파티 공유 목표는 각자 진행에 기록(개인 진행 원칙). 보스 처치 크레딧은 처치 시점 던전 좌석 보유자에게 부여.
+- 퀘스트 상태는 디자인 상태 기계([quests §1.3](../design/quests.md#13-퀘스트-상태))를 쓴다. 저장 이름은 디자인 v0.2가 정한 대응을 따른다: `AVAILABLE = available`, `ACTIVE = active`, `READY = completed`, `DONE = turned_in`. `LOCKED`는 저장하지 않고 선행 조건에서 계산한다. 포기는 `active → available`(달성 목표 유지).
+- 퀘스트는 목표(objective) 단위로 이벤트를 받는다: `ObjectiveProgressed(questId, objectiveId, delta, sourceEventId)`. 각 `O#` 완료 시점과 카운트 증가 시점에 커밋한다.
+- `sourceEventId`(예: 처치 이벤트 ID)로 중복 반영 방지. 중복 검사는 최근 N개 배열이 아니라 **고유 제약 테이블**(§14.2 `quest_objective_events`)로 한다 — 배열은 오래된 이벤트 재전송을 막지 못한다.
+- 파티 크레딧은 디자인 규칙([quests §2.2](../design/quests.md#party-rules))을 목표 종류별로 적용한다: 처치 = 같은 인스턴스에서 그 목표가 active인 파티원 전원, 수집·조사 = 개인 노드, 공유 상호작용 = 같은 목표를 가진 전원 + 인스턴스 상태 공유, 개인 수행 = 본인만.
+- **보고(ready → done)와 보상 지급은 한 DB 트랜잭션**으로 커밋한다(§13.2 `quest:` 연산). 퀘스트 상태와 원장이 같은 PostgreSQL에 있으므로 가능하며, 보상만 지급되고 퀘스트는 미완료인 상태(또는 그 반대)를 막는다 `[제안]`.
+- 해금형 보상(콤보 노드, 레시피 공개, 이름 '분이' 응답 플래그, 웨이포인트)은 아이템이 아니므로 캐릭터 상태 집합에 멱등 추가한다(같은 트랜잭션).
+- 잔향구 레시피는 **보스와 처음 마주친 순간 공개**(져도 공개, [Q-P01](../design/quests.md#q-p01)) → 보스 encounter 시작 이벤트에서 `revealedRecipes`에 멱등 추가.
+
+### 12.4 보스 encounter: 기여·인원 스케일링·쓰러짐
+
+디자인 [quests §2.2](../design/quests.md#party-rules)·[§2.3](../design/quests.md#reconnect), [combat §6.3](../design/combat-and-items.md#scaling) 정렬. 모두 `[제안]`.
+
+| 항목 | 디자인 규칙 | 서버 표현 |
+|---|---|---|
+| encounter 시작 | 보스방 문이 닫히는 틱 | `encounterId`(런 내 시도 번호 포함) 발급, 보스방 신규 입장 차단 플래그 켬 |
+| 참가자 명단·인원 | 문이 닫히는 틱에 **보스방 안에 있는 좌석 보유자** = 참가자 명단 = 인원 | `roster: Set<CharacterId>`, `scaleN = roster.size`. 문 밖(끊김·귀로 이탈 포함)에 있던 사람은 참가자 아님 → 돌아오면 체크포인트 C 대기 |
+| 배율 고정 | 교전 중 끊김·재접속 예약 중에는 배율 유지 | 예약 중에도 `scaleN` 불변 |
+| 예약 만료 시 재계산 | 남은 체력 **비율 유지**, 새 인원 배율로 재계산. 소환 수·이름 부르기 대상 수는 **다음 페이즈 전환부터** | 좌석 해제 이벤트에서 `hp = maxHp(scaleN') × (hp / maxHp(scaleN))`, `pendingScaleN`을 다음 페이즈 진입 시 적용. 결정적 계산이므로 리플레이 가능 |
+| 일반 적 수 배율 | — | 스폰 시점 인스턴스 좌석 보유자 수 |
+| 기여 1회 이상 | 확정 피해(보스·소환물·상여·꼭두 장식 포함), 보스·소환물 공격 튕겨내기, 일으키기 완료, '분이' 응답 | encounter별 `contrib: Set<CharacterId>`. 서버 확정 이벤트만: `HitConfirmed`(damage > 0, 대상이 그 encounter 소속), `DefenseResolved{result: parried}` 중 `encounterId`가 현재 교전과 같은 것(`attackerEntityId`가 보스 또는 그 소환물), 일으키기 완료, 응답 상호작용 |
+| 보스 처치 크레딧 | 처치 틱에 좌석 보유자(접속 중 또는 예약 중) ∩ 이번 시도 기여자 | 처치 틱에 `좌석 보유자 ∩ contrib` 각각에게 퀘스트 목표 + 보상 원장 연산. 예약 중인 사람도 즉시 원장 확정, 복귀 시 알림(우편 없음). 예약이 만료된 사람은 좌석이 없으므로 크레딧 없음 |
+| 쓰러짐(2인 이상) | 15초 안에 동료가 3초 일으키기, 같은 사람 회당 +1초. 15초 경과 시 **혼백(관전)** — 공격받지 않음, 승리 시 기여 조건대로 크레딧 | `downed{expiresTick = +450}`, 일으키기 채널 90틱 + 같은 대상 회당 30틱(encounter 내 누적). 만료 → `spirit` 상태(비표적) |
+| 전멸 | 접속 중 참가자 전원이 쓰러짐 또는 혼백 → 보스 초기화, 전원 체크포인트 C 부활. 잔상(끊김)은 생존으로 세지 않음 | 매 틱 `roster ∩ connected`가 모두 `downed` 또는 `spirit`이면 실패 처리 |
+| 1인 쓰러짐 | 문 앞 등불 부활, 보스 초기화 | encounter 종료(실패), 체크포인트 C에서 재생성, 새 `encounterId` |
+| 보스 초기화 | — | 기여 집합·명단·배율·이름 부르기 대상 기록 폐기. 다음 시도는 새 `encounterId` |
+
+- 이름 부르기 대상 선택(디자인 [combat §6.2](../design/combat-and-items.md#boss-gokbi)): 서버 시드 PRNG로 **접속 중·쓰러지지 않음·재접속 보호 아님**인 참가자 중에서 고르고, 자격자가 대상 수보다 적으면 대상 수를 줄인다. 대상이 표시된 뒤 끊기면 강타는 **표시된 위치**에 그대로 떨어진다(대상 추적 없음).
+- 기여 기록은 원장 연산 `context`에 encounterId와 함께 남겨 분쟁 시 리플레이(§17.3)로 재현한다.
 
 ---
 
@@ -471,8 +668,16 @@ Client          SourceRoom         Allocator          Character Svc       Target
 
 | 연산 | opKey 구성(제안) | 이유 |
 |---|---|---|
-| 처치 드랍 | `loot:{runId}:{encounterId}:{characterId}:{dropIndex}` | 재시도·중복 이벤트에도 같은 키 |
-| 보스 보상 상자 | `reward:{runId}:{characterId}` | 런당 1회 |
+| 처치 드랍 | `loot:{runId}:{targetEntityId}:{characterId}:{dropIndex}` | 캐릭터 × 런 × 처치 대상. 재시도·중복 이벤트에도 같은 키(`targetEntityId`는 런 안에서 유일한 스폰 ID) |
+| 보스 처치 보상(개인 드랍) | `reward:{runId}:{bossId}:{characterId}` | 디자인 1회성 범위 "캐릭터 × 런 × 처치 대상"([quests §2.2](../design/quests.md#party-rules)). v0.1 `reward:{runId}:{characterId}`는 한 런의 여러 보스를 구분하지 못함 |
+| 보스 첫 처치 확정(기억·공명석) | `firstkill:{characterId}:{bossId}` | 캐릭터 × 보스 영구 1회(디자인 v0.2 제안, 교차 검토 합의 — X7 종결). 퀘스트 레코드의 "보상·해금" 칸에 적힌 첫 처치 기억·공명석(Q-M04·Q-P01)은 **이 키로만** 지급하며 `quest:` 보고 보상에 포함하지 않는다(독립 검증 F-03) |
+| 재처치 '기억 결' | `memshard:{runId}:{bossId}:{characterId}` | 캐릭터 × 런 × 보스, 확률 없음 |
+| 주간 변이 첫 클리어 공명석 | `weekly:{weekId}:{characterId}` | 캐릭터 × 주차 1회. 이월은 최대 1주분이고 **지난주가 자격 주일 때만**(디자인 [quests §7](../design/quests.md#7-반복-콘텐츠-원칙-퀘스트-측면) 원칙 6, 독립 검증 F-15 — 코디네이터 제안, 사용자 미승인). 자격 주 판정: `character.createdAt < prevWeekStart` **그리고** `character.weeklyVariantUnlockedAt < prevWeekStart`(해금 = 그 캐릭터의 첫 `firstkill:` 연산 시각). 이번 주 첫 클리어 연산 안에서 지난주가 자격 주이고 지난주 키 `weekly:{prevWeekId}:{characterId}`가 없으면 같은 트랜잭션에서 함께 적용 — 지난주 키를 그대로 쓰므로 이월이 두 번 지급될 수 없고, 신규·막 해금한 캐릭터는 1개만 받는다. 주 경계는 서버 기준 고정 시간대(값은 미정) |
+| 퀘스트 보고 보상 | `quest:{characterId}:{questId}` | 캐릭터 × 퀘스트 영구 1회, 퀘스트 상태 전이와 같은 트랜잭션(§12.3). 보스 처치로 생기는 보상(`firstkill:`·`reward:`·`memshard:`)은 보고 보상 출력 목록에 넣지 않는다 — 콘텐츠 검증기가 퀘스트 보상 정의에 첫 처치 아이템이 있으면 빌드 실패 |
+| 동행 공적(도우미) | `assist:{runId}:{bossId}:{characterId}` | 캐릭터 × 런 × 보스. 도우미 판정은 처치 시점 퀘스트 상태로 서버가 결정 |
+| 귀로등 기름 소모 / 종결 실패 보상 / 시작 지급 / 보충 | `portal:{transitionId}` / `portal_refund:{transitionId}` / `grant:portal_oil_starter:{characterId}` / `grant:portal_oil_refill:{characterId}:{arrivalTransitionId}` | 모두 **논리 `transitionId`** 기준(§11.3.1) — `attemptKey`는 원장 키에 쓰지 않는다. 차감은 논리 전환당 1회(시전 완료 시 전환 레코드 생성과 같은 트랜잭션), 보상은 `compensated` 전이와 같은 트랜잭션에서 1회, 보충은 `arrived` 시점·보유 0개일 때 도착 1회당 최대 1개(§11.3.3·§11.6) |
+| Q-M05 선택 결과 | `choice:{characterId}:Q-M05` | '풀어 준다'(기억 → 울음의 재 변환) 1회 |
+| 잔향구 해체 | `dismantle:{itemInstanceId}` | 고유 아이템당 1회, 기억·공명석 전액 반환 |
 | 채집 | `gather:{nodeInstanceId}:{characterId}:{cycle}` | 개인 노드 |
 | 제작 | `craft:{requestId}` | 클라이언트 요청 단위 |
 | 구매 지급 | `purchase:{steamOrderId}:{itemLine}` | Steam orderid 기준 1회 |
@@ -497,12 +702,14 @@ Room ← { status: applied | duplicate | rejected(reason), result }
 
 - 격리 수준은 Serializable 또는 행 잠금 + Read Committed 중 S7에서 결정 `[제안]`.
 - 거부 사유: `insufficient`, `not_owner`, `item_locked`, `recipe_version_mismatch`, `inventory_full`.
+- **보상 계열(loot·reward·firstkill·memshard·weekly·quest·assist)은 `inventory_full`로 거부하지 않는다.** 보상 지급은 처치 틱에 원장에 확정되므로 접속 여부와 무관하고, 디자인 v0.2도 우편 시스템을 두지 않기로 했다([quests §2.2](../design/quests.md#party-rules)). 인벤토리 용량은 디자인 답([combat §8.3](../design/combat-and-items.md#crafting) "인벤토리 용량"): 재료·소모품·화폐는 종류당 1칸·수량 무제한, 고유 아이템 30칸, 넘친 고유 아이템은 상한 없는 보관함(`reward_overflow`)에 쌓이고 마을에서 꺼낸다. 따라서 원장 거부 사유 `inventory_full`은 **보관함에서 꺼내기·제작 결과 같은 비보상 연산에만** 쓰인다 `[제안]`.
 
 ### 13.4 고유 아이템(전설 무기·잔향구)
 
 - `item_instances`에 고유 ID, `definitionId`, `createdByOpKey`(출처), `boundTo`(귀속), 롤 결과(있다면).
 - 출처 추적으로 복제 의심 시 "어느 연산에서 생겼는가"를 역추적.
-- 거래는 범위 밖. 열 때는 소유 이전도 원장 연산으로만.
+- 거래는 범위 밖([concept §9](../design/concept.md#scope-out)). 거래를 열 때도 소유 이전은 원장 연산으로만.
+- 해체(`dismantle:`)는 고유 아이템 소멸 + 기억·공명석 반환을 한 트랜잭션으로 처리한다(combat §8.5).
 
 ### 13.5 제작
 
@@ -513,7 +720,7 @@ Room ← { status: applied | duplicate | rejected(reason), result }
 
 | 장애 | 결과 | 복구 |
 |---|---|---|
-| 원장 커밋 전 룸 크래시 | 연산 없음 | 플레이어는 드랍을 못 받은 상태. 던전 런 실패 정책: 입장 재료를 `refund:{runId}:{characterId}`로 환불 `[제안]` |
+| 원장 커밋 전 룸 크래시 | 연산 없음 | 플레이어는 드랍을 못 받은 상태. 보스 처치 후 커밋 전 크래시는 처치가 성립하지 않은 것으로 보고 보스 초기화(첫 처치 확정 보상은 다음 처치에서 지급되므로 유실 아님). 입장 재료 환불 `refund:{runId}:{characterId}`는 **입장 재료가 도입될 때만** 적용 — 현재 디자인에는 없음 |
 | 원장 커밋 후 응답 전 룸 크래시 | 연산 확정 | 재접속 시 인벤토리에 존재. 룸 재시도 시 `duplicate` 응답 |
 | 원장 응답 타임아웃 | 불명 | **같은 opKey로 재시도**(안전). 새 키 생성 금지 |
 | DB 장애 | 쓰기 불가 | 경제 연산 요청 큐잉 금지, 거부 후 UI 안내. 전투는 계속 가능하되 보상 지급 지연 표시 여부는 디자인 결정 |
@@ -527,6 +734,14 @@ Room ← { status: applied | duplicate | rejected(reason), result }
 4. 구매 지급 중 서버 재시작 → 재시작 후 대사 작업이 정확히 1회 지급.
 5. 차지백 상태 재통지 → 회수 1회.
 6. 불변식 검사: 모든 캐릭터에 대해 `Σ ledger_entries = 현재 잔액`, 고유 아이템 소유자 1명.
+7. 보스 처치 순간 재접속 예약 중인 기여자 → 복귀 없이 예약 만료 → 보상이 `reward_overflow` 또는 인벤토리에 정확히 1회.
+8. 퀘스트 보고 요청 중 프로세스 kill → 퀘스트 `done`과 `quest:` 보상이 둘 다 있거나 둘 다 없음.
+9. 같은 캐릭터가 두 런에서 같은 보스를 처치 → `firstkill:` 1회, `memshard:` 처치마다 1회.
+10. 귀로등 전환에서 예약 실패를 2회 주입 → 3번째 시도 성공, 기름 차감 1회, 체크포인트·도착 보충 키는 모두 같은 `transitionId`.
+11. 예약 실패를 상한까지 주입 → `compensated`, `portal_refund` 1회, 순 기름 변화 0, 플레이어는 소스에 남음.
+12. commit 응답 지연과 보상 타이머를 동시에 발화(100회 반복) → 매번 `committed` 또는 `compensated` 중 하나만, 둘 다인 경우 0. 보상된 전환의 늦은 `seatToken`은 대상 룸에서 거부.
+13. committed 후 클라이언트 접속 실패 → 새 `attemptKey`로 대체 목적지 도착, 환불 0.
+14. 같은 `requestId` 동시 5회 → `transitionId` 1개, 차감 1회.
 
 ---
 
@@ -560,6 +775,15 @@ interface Character {
   appearancePresetId: string;
   equippedWeaponInstanceId: string | null;
   equippedRelicInstanceIds: string[];   // 잔향구, 슬라이스 1개
+  displayName: string | null;           // Q-M02 이름 새기기 전 null('무명' 표시)
+  unlockedComboNodes: string[];         // Q-M01·Q-T01·Q-S02 해금 노드 ID
+  engravings: Record<string, string>;   // T2 버릇 각인: 노드 ID → 각인 ID(무료 교체)
+  revealedRecipes: string[];            // 보스 첫 조우 시 공개
+  storyFlags: string[];                 // 예: 'gokbi_name_known'(Q-S03), Q-M05 선택 결과
+  craftRank: 0 | 1 | 2 | 3 | 4;         // 강막쇠 신뢰(T0~T4)
+  createdAt: string;                    // 주간 이월 자격 주 판정(§13.2)
+  weeklyVariantUnlockedAt: string | null; // 첫 firstkill 연산 시각, 주간 이월 자격 주 판정
+  waypoints: string[];                  // 등불 웨이포인트
   lastSafeCheckpoint: Checkpoint;
   version: number;                      // 낙관적 잠금
 }
@@ -569,21 +793,37 @@ interface Checkpoint {
   zoneId: string;
   position: [number, number, number];
   hp: number;
-  transitionId: string | null;
+  transitionId: string | null;          // 논리 전환 ID(§11.3.1). attemptKey는 저장하지 않음
   savedAt: string;
+}
+
+interface TransitionRecord {             // transitions 테이블, §11.3.3
+  transitionId: string;                  // UUIDv7, 논리 전환 정체성
+  characterId: CharacterId;
+  requestId: string;                     // (characterId, requestId) 고유
+  partyTransitionGroupId: string | null; // 파티 동반 전환 묶음
+  kind: 'portal' | 'return_gate_follow' | 'return_gate_back' | 'dungeon_entry' | 'waypoint' | 'recovery';
+  state: 'pending' | 'committed' | 'arrived' | 'compensated';
+  currentAttempt: number;                // attemptKey = `${transitionId}:${currentAttempt}`
+  oilCharged: boolean;                   // portal:{transitionId} 적용 여부
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface QuestProgress {
   characterId: CharacterId;
   questId: string;
-  state: 'available' | 'active' | 'completed' | 'turned_in';
-  objectives: Record<string, number>;
-  appliedSourceEventIds: string[];      // 최근 N개, 중복 방지
+  state: 'available' | 'active' | 'completed' | 'turned_in';     // quests §1.3: READY=completed, DONE=turned_in, LOCKED는 계산값
+  objectives: Record<string, number>;   // O# → 카운트(완료 목표 유지, 포기해도 남음)
+  // 중복 방지는 quest_objective_events 테이블의 고유 제약으로 한다(§12.3)
 }
 
 interface LedgerOperation {
   opKey: string;
-  kind: 'loot' | 'reward' | 'gather' | 'craft' | 'purchase' | 'revoke' | 'refund' | 'ops';
+  kind:
+    | 'loot' | 'reward' | 'firstkill' | 'memshard' | 'weekly' | 'quest' | 'assist'
+    | 'gather' | 'craft' | 'dismantle' | 'portal' | 'grant' | 'choice'
+    | 'purchase' | 'revoke' | 'refund' | 'ops';   // portal_refund:{transitionId}는 kind 'refund'
   characterId: CharacterId;
   context: Record<string, string>;      // runId, recipeId@version, steamOrderId ...
   result: 'applied' | 'rejected';
@@ -614,6 +854,12 @@ interface PurchaseOrder {
 | `ledger_operations` | PK `op_key` |
 | `ledger_entries` | FK `op_key`, append-only (UPDATE/DELETE 권한 회수) |
 | `quest_progress` | PK (`character_id`, `quest_id`) |
+| `quest_objective_events` | PK (`character_id`, `source_event_id`) — 목표 중복 반영 방지 |
+| `reward_overflow` | 인벤토리 초과 보상 보관(원장 결과의 일부), 수령도 원장 연산 |
+| `character_names` | 이름 새기기 결과, 동명 식별 태그, 필터 판정·신고 이력(비유일 — 디자인 제안, 출시 정책 X8) |
+| `transitions` | PK `transition_id`, UNIQUE (`character_id`, `request_id`), `state` CHECK, 상태 비교 갱신(`WHERE state='pending'`)으로 commit·보상 상호 배제 |
+| `seat_attempts` | PK `attempt_key`, FK `transition_id`, 대상 룸·TTL·상태(reserved/cancelled/expired/used) — Redis 예약의 감사 사본 |
+| `encounter_results` | `run_id`, `boss_id`, `encounter_id`, 참가자 명단, 기여 집합, 결과 — 크레딧 분쟁·리플레이 근거 |
 | `purchase_orders` | PK `order_id`, 상태 전이 로그 테이블 별도 |
 | `chat_reports` | 신고 대상·메시지 스냅샷·처리 상태 |
 | `moderation_actions` | 제재 이력, 처리자, 근거 |
@@ -633,7 +879,8 @@ Gateway:     GET partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/
              → SteamID64 획득
              → CheckAppOwnership(steamid, 본편 appid) (§15.2)
              → 자체 세션 발급(짧은 TTL 액세스 토큰 + 회전 리프레시)
-Client:      세션으로 Allocator에서 seatToken 발급 → 룸 onAuth에서 서명 검증
+Client:      세션으로 Allocator에서 seatToken{attemptKey, transitionId, exp} 발급
+             → 룸 onAuth에서 서명 검증 + 전환 레코드 state = committed 확인(§11.3.3)
 ```
 
 - 근거: Web API 티켓 흐름, identity 문자열 일치 필요, `AuthenticateUserTicket`은 퍼블리셔 키가 필요하고 보안 서버에서 호출해야 함 `[공식: partner.steamgames.com/doc/features/auth, /doc/webapi/ISteamUserAuth]`.
@@ -711,6 +958,7 @@ Client:      세션으로 Allocator에서 seatToken 발급 → 룸 onAuth에서 
 | 외부 모더레이션 API·Steam 텍스트 필터 기능 | — | 검토 `[미검증 — 기능·약관 확인 필요]` |
 
 - 메시지는 서버 경유, 필터 후 전송. 신고 시 해당 메시지와 앞뒤 문맥을 신고 레코드에 복사(원본 로그 보존 기간과 분리).
+- **캐릭터 이름(Q-M02 이름 새기기)** 도 같은 금칙어 필터를 서버에서 적용하고, 머리 위 이름·명부 게시판 이름은 신고 대상에 포함한다([narrative §10](../design/narrative.md#10-서사-위험과-대응)). 이름 유일성: 디자인 제안은 **비유일 + 동명 식별 태그 + 절편 1회 무료 재새김**([Q-M02](../design/quests.md#q-m02)). 서버는 이름 대신 `characterId`로 식별하므로 비유일이어도 기술 제약은 없다. 출시 정책은 사용자 결정(X8).
 - 로그 보존 기간·개인정보 처리 방침은 법무 검토 `[열린 질문]`.
 - 제재는 계정 단위, Steam ID와 연결. 제재 이력은 append-only.
 - 신고 처리 SLA는 운영 인력에 의존 — [delivery-and-business.md §7](delivery-and-business.md#7-인력) 참조.
@@ -726,15 +974,18 @@ Client:      세션으로 Allocator에서 seatToken 발급 → 룸 onAuth에서 
 | 룸 | 틱 처리 시간 p50/p95/p99, 틱 초과 횟수, GC 일시정지 | S4·게이트 |
 | 네트워크 | 클라이언트별 RTT·지터·손실 분포, 클라이언트당 송수신 바이트/초 | 비용 공식(§19) 입력 |
 | 예측 | 재조정 보정 크기 분포, 스냅 횟수, `ComboRejected`·`HitRejected` 비율 | 손맛·공정성 |
-| 할당 | 룸 점유율 분포, 예약 실패율, 전환 소요 시간 | 정원 조정 |
+| 할당 | 룸 점유율 분포, 예약 실패율, 전환 소요 시간, 전환당 시도 수 분포, `compensated` 비율, `pending` 체류 시간 | 정원 조정, 재시도 상한 조정 |
 | 원장 | 연산 지연, duplicate 비율, rejected 사유별 수, 불변식 위반 수(0이어야 함) | S7 |
 | 구매 | 상태별 주문 수, 대사 지연, 미지급 성공 주문 수 | 출시 차단 지표 |
 | 클라이언트 | 프레임 시간 분포(사양 등급별), 로딩 시간, 크래시 | S1 |
-| 디자인 텔레메트리 | `combo_node_first_use` 등 디자인 게이트 이벤트 | [concept.md §10](../design/concept.md#gates) |
+| 디자인 텔레메트리 | `combo_node_first_use`, `combo_node_use`, `parry_result{attack_id}`, `guard_hold_ratio`(C3), 체감 리드타임(C12), `death_cause`, `boss_attempts_to_clear`, `legendary_action_use`, `disconnect_events` 등 디자인 게이트 이벤트 | [concept.md §10](../design/concept.md#gates), [combat §10](../design/combat-and-items.md#combat-gates), quests 레코드별 텔레메트리 |
+| 재접속·보스 | 끊김 감지 지연, 예약 내 복귀율, 보호 3초 중 조기 해제 비율, encounter별 기여자 수·배율 | G7, 보호 3초 종료 조건·기여 문턱 튜닝 |
+
+- 이벤트 **이름과 의미는 디자인 소유**, 공통 봉투(시각·sessionId·빌드·콘텐츠 해시)와 개인정보 규칙은 기술 소유. 이벤트 카탈로그는 `packages/content`의 데이터 파일 하나로 두고, 서버·클라이언트가 카탈로그에 없는 이벤트를 보내면 빌드 검사에서 실패시킨다 `[제안]`. 디자인 v0.2가 문서 간 이름(`combo_path_entropy`, `legendary_action_use`, `boss_name_call_used`)을 통일했다.
 
 ### 17.2 로그·트레이스
 
-- 구조화 로그(JSON), 상관 ID: `sessionId`, `roomId`, `transitionId`, `opKey`, `orderId`.
+- 구조화 로그(JSON), 상관 ID: `sessionId`, `roomId`, `transitionId`, `attemptKey`, `opKey`, `orderId`.
 - 분산 트레이스는 Gateway→Allocator→Room→Ledger 경로에 적용(OpenTelemetry 등, 도구 선택 `[미검증]`).
 - 개인정보 최소화: Steam ID는 해시 또는 내부 accountId로 기록, 채팅 본문은 모더레이션 저장소에만.
 
@@ -800,7 +1051,7 @@ DAU 기준 환산(사업 문서용)
 | L0 단일 룸 | 던전 4봇 + 적, 지연 0/100/150ms·손실 0~3% | 틱 p99 ≤ 틱 간격 × 0.5, 예측 거부율 측정값 기록 | 네트워크 수직 절편 |
 | L1 마을 정원 | 마을 1룸에 정원 상한까지 봇 | 틱 p99 기준 동일, 클라이언트당 송신량 측정 | 마을 정원 확정 |
 | L2 프로세스 | 프로세스당 룸 N개(목표 혼합) | CPU·메모리 포화 전 N 측정 → §19 입력 | 비용 추정 |
-| L3 전환 폭주 | 다수 봇이 동시에 포탈·던전 입장 | 예약 실패율·전환 시간 분포 기록, 데이터 손실 0 | 클로즈 테스트 |
+| L3 전환 폭주 | 다수 봇이 동시에 포탈·던전 입장, 정원 부족으로 재시도 유발 | 예약 실패율·전환 시간·시도 수 분포 기록, 데이터 손실 0, 전환 불변식(§11.3.3) 위반 0 | 클로즈 테스트 |
 | L4 장애 주입 | 룸 kill, 원장 지연, DB 페일오버, Redis 재시작 | 원장 불변식 위반 0, 재접속 성공률 측정 | 클로즈 테스트 |
 | L5 장시간 | 목표 CCU 혼합 부하 장시간 | 메모리 누수 없음, 틱 분포 악화 없음 | 출시 |
 | L6 복구 훈련 | DB 백업에서 복원 + 구매 대사 | 대사 후 구매 지급 불일치 0 | 출시 |
@@ -831,28 +1082,39 @@ yeonmu/
 
 ## 22. 디자인 교차 검토 응답
 
-[concept.md §12](../design/concept.md#cross-review) 항목에 대한 기술 측 1차 응답. 상세 결정은 S5·S6 이후.
+[concept.md §12](../design/concept.md#cross-review)(디자인 v0.2 표)와 디자인 전투 문서 교차 검토 질문에 대한 기술 측 응답(v0.2). 상세 결정은 S5·S6 이후. 전체 교차 검토 기록과 미해결 항목(X#)은 [technical-cross-review.md](../production/technical-cross-review.md).
 
-| # | 디자인 요구 | 기술 응답(제안) | 상태 |
+| # | 디자인 요구(concept §12 v0.2 번호) | 기술 응답(제안) | 상태 |
 |---|---|---|---|
-| 1 | 입력 버퍼 150ms, 패링 창 150ms | 30Hz 기준 약 4~5 스텝. **`actionTick` 기준**으로 정의하면 히트스톱과 충돌 없음(§9.3). 패링은 입력 seq 기준 판정 + 되감기 상한(§10) | S6에서 지연 100ms 체감 확인(가정 A3) |
-| 2 | 히트스톱은 로컬 연출, 판정은 서버 | 동의. 단 콤보 창은 액션 로컬 시간으로 서버도 멈춤(§9). 타인 화면 불일치는 그 엔티티 표현에만 적용 | S6 |
-| 3 | 재접속 예약 180초, 보스전 재입장 차단, 목표 단위 저장 | `allowReconnection(client, 180)` 후보. 보스전 중 **기존 좌석 재접속은 허용**, 신규 입장만 차단 제안. 목표 단위 커밋(§12.3) | 디자인 확인 필요 |
-| 4 | 마을 상한 40 / 병합 하한 20, 필드 동시 표시 20 내외 | 정원은 L1 측정 후 확정. 병합은 강제 이동 대신 다음 전환 시 재배치 | L1 |
-| 5 | 개인 드랍·개인 채집 노드 | 원장 opKey에 characterId 포함(§13.2), 노드 상태는 캐릭터별 | 반영 |
-| 6 | 텔레메트리 이벤트 수집 | §17.1에 포함. 개인정보 최소화 규칙 적용 | 반영 |
+| 1 | 입력 버퍼 5틱, 튕겨내기 30Hz 최소 5틱, 방어자 화면 기준(창 시작·끝 검사) | §9.5 환산 규칙·틱 검증기, §9.3-5 `actionTick` 창, §10 방어자 기준 판정 + `maxDefenseRewindMs` 초기안 200ms | 문서 정렬. 체감은 S6·C9(가정 A3) |
+| 2 | 히트스톱 = 공격자 `actionTick` 정지, 적 타임라인 불변, 화면 전체 정지 없음, **방어 입력이 자기 히트스톱을 끊음** | §9.3-1·2·4·5·6 | 문서 정렬(X-D1 반영) |
+| 3 | 재접속 180초, 신규 입장 차단·참가자 복귀 허용, **재접속 보호 3초**, 목표 단위 저장 | §12.2(5초 피격 가능 → 잔상 → 180초, 보호 90틱·종료 조건·적용 범위), §12.3 | 문서 정렬. 감지 지연은 S5 측정 |
+| 4 | 마을 상한 40 / 병합 하한 20 | 정원은 L1 측정 후 확정, 병합은 다음 전환 시 재배치, 절편 필드는 1~4 인스턴스(§11.1) | 측정 대기(L1) |
+| 5 | 개인 드랍·채집, 귀속, 보상 종류별 1회성 범위 | §13.2 키를 디자인 범위표와 1:1로 맞춤, 보상은 인벤토리 초과로 거부하지 않음 | 문서 정렬(이월·인벤토리 용량 디자인 답 반영) |
+| 6 | 텔레메트리 이벤트(이름 통일) | §17.1, 이벤트 카탈로그 데이터화 | 문서 정렬. 수집 비용은 구현 시 측정 |
+| 7 | 잔향구 = 그래프 패치, 비전투 공간에서만 장착 변경, 노드별 애니메이션 예산 | §7.5, [art §10.1](art-and-animation.md#101-콤보별-애니메이션-예산첫-절편)(디자인 상한 채택 + 기술 검수 조건) | 문서 정렬(예산은 측정 전) |
+| 8 | 보스 기여 1회 크레딧·참가자 명단·인원 고정·예약 만료 시 재계산·혼백·전멸 | §12.4 | 문서 정렬 |
+| 9 | 귀로등: 전투 중 사용, 180초 귀로 예약, 마을 쪽 문, 기름 보충 | §11.6 | 문서 정렬 |
+| c1 | (combat §11-1) 틱 값과 히트스톱의 서버 어긋남 | 디자인 틱 원천을 서버·클라이언트가 그대로 사용, 히트스톱으로 인한 창 어긋남 0 | 문서 정렬 |
+| c4 | (combat §11-4) 흉내용 입력 경로 기록 위치 | 서버 sim 상태 링 버퍼(§7.5) | 문서 정렬 |
+| c5 | (combat §11-5) 4인 VFX 불투명도·렌더 우선순위 비용 | 클라이언트 전용, 서버 비용 없음. 클라이언트 비용은 S-A4([art §4](art-and-animation.md#4-vfx와-판독성)) | S-A4 |
+
+"문서 정렬"은 두 문서의 규칙이 서로 맞는다는 뜻이며 구현·측정으로 검증됐다는 뜻이 아니다.
 
 ---
 
 ## 23. 열린 질문
 
-1. 화면 전체 히트스톱을 1인 던전에서 허용할지(§9.3-4).
-2. 파티 던전 입장 시 일부 실패 처리(§11.4).
-3. 보스전 중 재접속 허용 범위(§12.2).
-4. `permanent=false` 소유자(패밀리 공유 등)의 유료 외형 사용 범위(§15.2).
-5. 채팅 로그 보존 기간, 개인정보 처리 방침, 연령 정책(법무).
-6. 첫 리전 위치와 해외 플레이어 정책.
-7. three.js vs Babylon.js(S1), Colyseus 예측 API vs 자체 구현(S5).
+1. ~~화면 전체 히트스톱~~ — 종결: 쓰지 않음(§9.3-4).
+2. ~~파티 던전 입장 일부 실패·재시도 키(X11)~~ — 디자인 v0.2 제안(교차 검토 합의) 수용, X11 종결(독립 검증 F-07). 식별자 분리는 §11.3.1(F-01), 전환 실패 시 기름은 §11.3.3(F-02, 코디네이터 제안·사용자 미승인).
+3. ~~재접속 5초 피격 여부·보호 3초 종료 조건·적용 범위~~ — 디자인 v0.2 제안(교차 검토 합의) 수용(§12.2), 로딩 구간은 F-04로 보완.
+4. ~~기여 대상 범위·쓰러짐 15초 경과·전멸 판정~~ — 디자인 v0.2 제안(교차 검토 합의) 수용(§12.4).
+5. ~~귀로등 마을 측 문 수명·기름 재충전~~ — 디자인 v0.2 제안(교차 검토 합의) 수용(§11.6).
+6. ~~주간 이월(X12)·인벤토리 용량(X13)~~ — 디자인 답 수용(§13.2·§13.3). 캐릭터 이름 출시 정책(X8, 사용자 결정).
+7. `permanent=false` 소유자(패밀리 공유 등)의 유료 외형 사용 범위(§15.2).
+8. 채팅 로그 보존 기간, 개인정보 처리 방침, 연령 정책(법무).
+9. 첫 리전 위치와 해외 플레이어 정책.
+10. three.js vs Babylon.js(S1), Colyseus 예측 API vs 자체 구현(S5), `maxDefenseRewindMs` 값(S6), 끊김 감지 지연(S5).
 
 ## 24. 참고 자료
 

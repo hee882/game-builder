@@ -15,6 +15,8 @@ PC 우선 온라인 3D 액션 RPG의 기획 프로젝트. 제목과 조선풍 �
 7. [디자인·UI·모델·리깅·애니메이션](docs/technical/art-and-animation.md)
 8. [단계별 제작·사업·검증 계획](docs/technical/delivery-and-business.md)
 9. [검토 완료 범위와 재개 지점](docs/production/review-status.md)
+10. [디자인 교차 검토](docs/production/design-cross-review.md) · [기술 교차 검토](docs/production/technical-cross-review.md)
+11. [독립 검증 결과](docs/production/independent-validation.md) · [검증 계획](docs/production/validation-plan.md)
 
 ## 격리 원칙
 
