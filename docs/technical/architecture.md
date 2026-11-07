@@ -1,5 +1,7 @@
 # 연무: 잔향의 문 — 기술 스택·온라인 아키텍처 (architecture)
 
+> **보관된 이전 방향(2026-11-07).** 현재 기준은 [오프라인 파밍 절편 설계](../arpg/slice-spec.md)다. 이 문서는 콤보 액션·온라인 우선 방향의 기록이며 범위·전투·아이템·단계 계획은 새 문서가 우선한다.
+
 > **문서 상태:** 초안 v0.2 (2026-11-07) · 기술 문서 담당 · 디자인 문서 교차 검토 1차 반영(기술 측 수정만) · **독립 검증 전**. 변경 근거와 미해결 항목은 [technical-cross-review.md](../production/technical-cross-review.md).
 >
 > **가칭·제안 주의:** `연무: 잔향의 문 (YEONMU)`은 임시 작업명이고, 조선풍 가상 다크 판타지 배경은 제안 상태다([decision-register.md](../production/decision-register.md)). 이 문서의 스택 결정은 **ADR 제안(Proposed)** 이며 승인되지 않았다.
