@@ -62,3 +62,4 @@ npm run check # TypeScript 검사. 별도 lint 명령은 없음.
 ## 추가 문서
 
 - [docs/stack-guide.md](docs/stack-guide.md) — 게임 유형별 스택 선택 기준
+- [docs/strategy/monetization-and-development.md](docs/strategy/monetization-and-development.md) — 수익화·개발 전략, 장르 비교, 출시 채널, AI 도구 목록
