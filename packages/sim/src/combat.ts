@@ -1,4 +1,4 @@
-import { ENEMIES, GLOBE_HEAL, INVENTORY_SIZE, MAX_LEVEL, SHIELD_FRONT_REDUCTION, SKILLS, SKILL_ORDER, WARD_REDUCTION, killXp, xpToNext } from './data';
+import { ENEMIES, GLOBE_HEAL, KNOCKBACK, KNOCK_DECAY, INVENTORY_SIZE, MAX_LEVEL, SHIELD_FRONT_REDUCTION, SKILLS, SKILL_ORDER, WARD_REDUCTION, killXp, xpToNext } from './data';
 import { canStand } from './dungeon';
 import type { Dungeon } from './dungeon';
 import { computeStats, dropCount, rollItem, rollRarity } from './loot';
@@ -38,8 +38,19 @@ export function damageEnemy(world: World, enemy: Enemy, base: number, options: H
     enemy.staggerUntil = state.tick + options.stagger;
     if (enemy.mode === 'windup') { enemy.mode = 'recover'; enemy.modeUntil = enemy.staggerUntil; enemy.attack = null; }
   }
+  knock(enemy, from, KNOCKBACK[options.source] ?? 0);
   state.events.push({ type: 'hit', enemy: enemy.id, amount: dealt, crit, x: enemy.x, z: enemy.z });
   if (enemy.hp === 0) onKill(world, enemy);
+}
+
+/** 맞은 방향으로 밀어낸다. 보스는 안 밀리고, 정예·방패병은 덜 밀린다. 더 센 넉백만 덮어쓴다. */
+function knock(enemy: Enemy, from: Vec, distance: number): void {
+  if (distance <= 0 || enemy.boss) return;
+  const resist = (enemy.elite ? 0.4 : 1) * (enemy.kind === 'shield' ? 0.5 : 1);
+  const dx = enemy.x - from.x; const dz = enemy.z - from.z; const d = Math.hypot(dx, dz) || 1;
+  const speed = distance * resist * (1 - KNOCK_DECAY);
+  if (speed * speed <= enemy.kx * enemy.kx + enemy.kz * enemy.kz) return;
+  enemy.kx = (dx / d) * speed; enemy.kz = (dz / d) * speed;
 }
 
 function facesToward(enemy: Enemy, point: Vec): boolean {
@@ -50,7 +61,7 @@ function facesToward(enemy: Enemy, point: Vec): boolean {
 function onKill(world: World, enemy: Enemy): void {
   const { state } = world; const p = state.player;
   state.kills++;
-  state.events.push({ type: 'kill', enemy: enemy.id, kind: enemy.kind, elite: enemy.elite !== null, boss: enemy.boss, x: enemy.x, z: enemy.z });
+  state.events.push({ type: 'kill', enemy: enemy.id, kind: enemy.kind, elite: enemy.elite !== null, boss: enemy.boss, x: enemy.x, z: enemy.z, kx: enemy.kx, kz: enemy.kz });
   if (p.stats.lifeOnKill > 0) p.hp = Math.min(p.stats.maxHp, p.hp + p.stats.lifeOnKill);
   gainXp(state, killXp(state.dungeonLevel, enemy.elite !== null, enemy.boss));
   const source: DropSource = enemy.boss ? 'boss' : enemy.elite ? 'elite' : 'normal';

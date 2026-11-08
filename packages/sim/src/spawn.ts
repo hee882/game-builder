@@ -17,6 +17,7 @@ export function makeEnemy(id: number, kind: EnemyKind, pos: Vec, dungeonLevel: n
     facing: 0, mode: 'sleep', modeUntil: 0, attack: null, attackTarget: { x: pos.x, z: pos.z },
     nextSpecial: 90, staggerUntil: 0, slowed: false, flashUntil: 0, waypoint: null,
     repathAt: id % 20, // 첫 길찾기가 한 틱에 몰리지 않게 분산
+    kx: 0, kz: 0,
   };
 }
 

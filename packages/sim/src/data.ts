@@ -36,6 +36,12 @@ export const ELITE_NAMES = { swift: '날쌘', tough: '단단한', splitting: '�
 export const SHIELD_FRONT_REDUCTION = 0.5;
 export const PROJECTILE_SPEED = 0.35;
 export const AWAKE_RANGE = 12;
+/** 공격 출처별 넉백 총 이동 거리(m). 가설 — 타격감 조정용. */
+export const KNOCKBACK: Record<string, number> = {
+  slash: 0.7, spin: 1.6, echo_spin: 1.3, dash: 1.8, talisman: 2.6, split_blast: 1.3, cleave: 3.2, fire: 0,
+};
+/** 넉백 속도 감쇠(틱당). 총 거리 = 초기 속도 / (1 - 감쇠). */
+export const KNOCK_DECAY = 0.7;
 
 export function levelMult(level: number): number { return 1 + 0.35 * (level - 1); }
 export function xpToNext(level: number): number { return Math.round(100 * level ** 1.5); }

@@ -62,6 +62,8 @@ export interface Enemy extends Vec {
   nextSpecial: number; staggerUntil: number; slowed: boolean; flashUntil: number;
   /** 시야가 막혔을 때만 쓰는 길찾기 중간 지점 */
   waypoint: Vec | null; repathAt: number;
+  /** 넉백 속도(m/틱). 매 틱 감쇠하며 벽에 닿으면 멈춘다. */
+  kx: number; kz: number;
 }
 
 export interface GroundItem extends Vec { id: number; item: Item }
@@ -75,7 +77,7 @@ export type SimEvent =
   | { type: 'hit'; enemy: number; amount: number; crit: boolean; x: number; z: number }
   | { type: 'blocked'; enemy: number; x: number; z: number }
   | { type: 'blast'; x: number; z: number; radius: number; source: string }
-  | { type: 'kill'; enemy: number; kind: EnemyKind; elite: boolean; boss: boolean; x: number; z: number }
+  | { type: 'kill'; enemy: number; kind: EnemyKind; elite: boolean; boss: boolean; x: number; z: number; kx: number; kz: number }
   | { type: 'player_hit'; amount: number; source: EnemyAttackKind }
   | { type: 'telegraph'; enemy: number; attack: EnemyAttackKind; x: number; z: number; radius: number; ticks: number }
   | { type: 'drop'; item: number; rarity: Rarity; x: number; z: number }

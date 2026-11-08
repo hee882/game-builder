@@ -121,6 +121,18 @@ describe('스킬', () => {
     const hit = ids.map(id => world.state.enemies.find(e => e.id === id)!).map(e => e.hp < e.maxHp);
     expect(hit).toEqual([true, true, true, false]);
   });
+  it('회전베기는 적을 바깥으로 밀어내고 보스는 밀지 않으며 넉백은 벽을 넘지 않는다', () => {
+    const world = emptyWorld(); const p = world.state.player; p.spirit = 100;
+    const reed = addEnemy(world, 'shield', { x: 1.5, z: 0 }); const boss = addEnemy(world, 'hat', { x: -2, z: 0 });
+    const start = new Map(world.state.enemies.map(e => [e.id, Math.hypot(e.x - p.x, e.z - p.z)]));
+    step(world, input({ cast: { slot: 'rmb', at: p } }));
+    run(world, 10);
+    const dist = (id: number): number => { const e = world.state.enemies.find(x => x.id === id)!; return Math.hypot(e.x - p.x, e.z - p.z); };
+    expect(dist(reed) - start.get(reed)!).toBeGreaterThan(0.5);
+    expect(Math.abs(dist(boss) - start.get(boss)!)).toBeLessThan(0.05);
+    const killEvents = world.state.enemies.every(e => isFloor(world.dungeon, e.x, e.z));
+    expect(killEvents).toBe(true);
+  });
   it('재사용 대기 중에는 다시 못 쓴다(질풍 돌진 120틱)', () => {
     const world = emptyWorld(7, profileAt(2)); const p = world.state.player;
     p.slots.s1 = 'dash';

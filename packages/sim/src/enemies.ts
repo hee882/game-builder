@@ -1,4 +1,4 @@
-import { AWAKE_RANGE, ENEMIES, PROJECTILE_SPEED, WARD_SLOW } from './data';
+import { AWAKE_RANGE, ENEMIES, KNOCK_DECAY, PROJECTILE_SPEED, WARD_SLOW } from './data';
 import { canStand, findPath, lineOfSight } from './dungeon';
 import { damageEnemy, damagePlayer, spawnNear } from './combat';
 import type { World } from './combat';
@@ -20,6 +20,7 @@ export function updateEnemies(world: World): void {
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
     enemy.slowed = ward && dist(enemy, p) <= 6;
+    applyKnock(world, enemy);
     if (enemy.mode === 'sleep') { wake(world, enemy); continue; }
     if (state.tick < enemy.staggerUntil) continue;
     if (enemy.mode === 'windup') { if (state.tick >= enemy.modeUntil) resolveAttack(world, enemy); continue; }
@@ -27,6 +28,17 @@ export function updateEnemies(world: World): void {
     if (enemy.boss) bossThink(world, enemy); else think(world, enemy);
   }
   state.enemies = state.enemies.filter(enemy => enemy.hp > 0);
+}
+
+function applyKnock(world: World, enemy: Enemy): void {
+  if (enemy.kx === 0 && enemy.kz === 0) return;
+  const { dungeon } = world; const nx = enemy.x + enemy.kx; const nz = enemy.z + enemy.kz;
+  if (canStand(dungeon, nx, nz, enemy.radius)) { enemy.x = nx; enemy.z = nz; }
+  else if (canStand(dungeon, nx, enemy.z, enemy.radius)) { enemy.x = nx; enemy.kz = 0; }
+  else if (canStand(dungeon, enemy.x, nz, enemy.radius)) { enemy.z = nz; enemy.kx = 0; }
+  else { enemy.kx = 0; enemy.kz = 0; return; }
+  enemy.kx *= KNOCK_DECAY; enemy.kz *= KNOCK_DECAY;
+  if (Math.abs(enemy.kx) + Math.abs(enemy.kz) < 0.003) { enemy.kx = 0; enemy.kz = 0; }
 }
 
 function wake(world: World, enemy: Enemy): void {
