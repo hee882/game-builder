@@ -8,3 +8,9 @@ canvas{display:block;width:100vw;height:100vh;touch-action:none}
 #inv[hidden],#perf[hidden]{display:none}
 #inv button{display:block;width:100%;text-align:left;margin:4px 0;background:#1d292b;color:inherit;border:1px solid #3a4b4d;padding:7px;cursor:pointer;font:inherit}
 .common{color:#e6e6e6}.magic{color:#7fa8ff}.rare{color:#ffe066}.legendary{color:#ff9a3c}
+.combat-floaters{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.combat-number{position:absolute;left:0;top:0;font:bold 16px/1 'Malgun Gothic',sans-serif;color:#f0ece2;text-shadow:0 2px 3px #000,1px 0 2px #000;will-change:transform,opacity}
+.combat-number.critical{font-size:25px;color:#ffe06a;text-shadow:0 2px 4px #3c2200,0 0 9px #b86a22}
+.combat-number.blocked{font-size:14px;color:#a7d7ff}
+.combat-number.hurt{color:#ff6961}
+.hurt-edge{position:absolute;inset:0;opacity:0;box-shadow:inset 0 0 110px 30px #bc152d;background:radial-gradient(ellipse,transparent 55%,#9d122b77 100%)}

@@ -9,6 +9,7 @@ const COLORS = { reed: 0x879577, shield: 0x6f8e9d, porter: 0x997fa6, hat: 0xa744
 type Pose = Vec & { facing: number };
 interface Batch { mesh: THREE.InstancedMesh; ids: number[] }
 interface Corpse { mesh: THREE.Mesh; age: number; facing: number; size: number }
+interface Recoil { id: number; x: number; z: number; age: number }
 
 function enemyGeometry(kind: EnemyKind): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
@@ -53,6 +54,8 @@ export class Actors {
   private dummy = new THREE.Object3D();
   private tint = new THREE.Color();
   private hover: THREE.Mesh;
+  private recoil: Recoil[] = Array.from({ length: 64 }, () => ({ id: -1, x: 0, z: 0, age: 1 }));
+  private nextRecoil = 0;
 
   constructor(state: RunState) {
     const material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.15 });
@@ -79,10 +82,16 @@ export class Actors {
     for (const enemy of state.enemies) this.previous.set(enemy.id, { x: enemy.x, z: enemy.z, facing: enemy.facing });
   }
 
-  events(events: readonly SimEvent[]): void {
+  events(events: readonly SimEvent[], state: RunState): void {
+    let deaths = 0;
     for (const event of events) {
       if (event.type === 'cast') this.player.playCast(event.skill);
-      if (event.type !== 'kill') continue;
+      if (event.type === 'hit') {
+        const slot = this.recoil[this.nextRecoil++ % this.recoil.length]!;
+        const dx = event.x - state.player.x; const dz = event.z - state.player.z; const length = Math.hypot(dx, dz) || 1;
+        slot.id = event.enemy; slot.x = dx / length * .18; slot.z = dz / length * .18; slot.age = 0;
+      }
+      if (event.type !== 'kill' || (!event.boss && deaths++ >= 12)) continue;
       const corpse = this.corpses[this.nextCorpse++ % this.corpses.length]!;
       corpse.mesh.geometry = this.batches.get(event.kind)?.mesh.geometry ?? this.boss.geometry;
       (corpse.mesh.material as THREE.MeshStandardMaterial).color.setHex(event.elite ? 0xce8dec : COLORS[event.kind]);
@@ -94,6 +103,7 @@ export class Actors {
 
   update(state: RunState, alpha: number, dt: number, hovered: number | null): void {
     this.player.update(state, alpha);
+    for (const kick of this.recoil) kick.age += dt;
     for (const batch of this.batches.values()) batch.ids.length = 0;
     this.boss.visible = false; this.hover.visible = false;
     for (const enemy of state.enemies) {
@@ -101,6 +111,10 @@ export class Actors {
       const x = THREE.MathUtils.lerp(old.x, enemy.x, alpha); const z = THREE.MathUtils.lerp(old.z, enemy.z, alpha);
       const angle = Math.atan2(Math.sin(enemy.facing - old.facing), Math.cos(enemy.facing - old.facing));
       this.dummy.position.set(x, 0, z);
+      for (const kick of this.recoil) if (kick.id === enemy.id && kick.age < .18) {
+        const weight = Math.sin(kick.age / .18 * Math.PI);
+        this.dummy.position.x += kick.x * weight; this.dummy.position.z += kick.z * weight; break;
+      }
       this.dummy.rotation.set(enemy.mode === 'windup' ? -0.12 : 0, old.facing + angle * alpha, 0);
       this.dummy.scale.setScalar(enemy.boss ? 1.6 : enemy.elite ? 1.3 : 1); this.dummy.updateMatrix();
       this.tint.setHex(enemy.flashUntil > state.tick ? 0xffffff : enemy.elite ? 0xce8dec : COLORS[enemy.kind]);

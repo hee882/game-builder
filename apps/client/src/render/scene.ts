@@ -13,6 +13,8 @@ export class GameScene {
   readonly bloom: boolean;
   private composer: EffectComposer | null = null;
   private focus = new THREE.Vector3();
+  private target = new THREE.Vector3();
+  renderCpuMs = 0;
   private offset = new THREE.Vector3(0.45, 0.788, 0.42).normalize(); // 52° down
   private torch = new THREE.PointLight(0xffbe75, 55, 15, 1.7);
   private moon = new THREE.DirectionalLight(0x9abdc7, 1.7);
@@ -23,6 +25,10 @@ export class GameScene {
   constructor(readonly canvas: HTMLCanvasElement, bloom: boolean) {
     this.bloom = bloom;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    const render = this.renderer.render.bind(this.renderer);
+    this.renderer.render = (scene, camera): void => {
+      const start = performance.now(); render(scene, camera); this.renderCpuMs += performance.now() - start;
+    };
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -66,8 +72,8 @@ export class GameScene {
   snap(at: Vec): void { this.focus.set(at.x, 0, at.z); this.follow(at, 1, 0); }
   follow(at: Vec, dt: number, time: number): void {
     const smoothing = 1 - Math.exp(-dt * 8);
-    this.focus.lerp(new THREE.Vector3(at.x, 0, at.z), smoothing);
-    this.distance += ([18, 24, 31][this.zoomIndex]! - this.distance) * smoothing;
+    this.focus.lerp(this.target.set(at.x, 0, at.z), smoothing);
+    this.distance += ((this.zoomIndex === 0 ? 18 : this.zoomIndex === 1 ? 24 : 31) - this.distance) * smoothing;
     this.camera.position.copy(this.focus).addScaledVector(this.offset, this.distance);
     this.camera.lookAt(this.focus.x, 0.4, this.focus.z);
     this.camera.updateMatrixWorld();
@@ -78,9 +84,17 @@ export class GameScene {
   }
 
   render(): void {
+    this.renderCpuMs = 0;
     this.renderer.info.reset();
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
+  }
+
+  shake(strength: number, time: number): void {
+    if (strength < .001) return;
+    this.camera.position.x += Math.sin(time * 107) * strength;
+    this.camera.position.z += Math.cos(time * 91) * strength;
+    this.camera.updateMatrixWorld();
   }
 
   project(at: Vec, y = 0): { x: number; y: number } {

@@ -10,6 +10,9 @@ import { Actors } from './render/actors';
 import { Pickups } from './render/pickups';
 import { InputController } from './input';
 import { PerformanceMeter } from './perf';
+import { Effects } from './render/effects';
+import { Floaters } from './render/floaters';
+import { CombatAudio } from './audio';
 
 const SAVE_KEY = 'yeonmu.save.v1';
 const params = new URLSearchParams(location.search);
@@ -38,13 +41,16 @@ let world: World = newRun();
 const view = new GameScene(canvas, params.get('bloom') !== '0');
 const stepper = new FixedStepper();
 const perf = new PerformanceMeter();
+const audio = new CombatAudio(params.has('mute'));
 let dungeon: DungeonMesh;
 let actors: Actors;
 let pickups: Pickups;
+let effects: Effects;
+let floaters: Floaters;
 // Every tick contributes, even when a render frame advances several sim ticks.
 // Effects in slice ② can consume this same frame batch after Actors.events().
-const eventQueue: SimEvent[] = [];
-let frameEvents: readonly SimEvent[] = [];
+let eventQueue: SimEvent[] = [];
+let frameEvents: SimEvent[] = [];
 mountRun();
 const input = new InputController(view, () => world, () => actors, () => pickups,
   () => { inv.hidden = !inv.hidden; renderInventory(); }, reenter);
@@ -59,12 +65,14 @@ function newRun(): World {
 }
 function mountRun(): void {
   dungeon = new DungeonMesh(world.dungeon); actors = new Actors(world.state); pickups = new Pickups();
-  view.scene.add(dungeon.root, actors.root, pickups.root); view.snap(world.state.player);
+  effects = new Effects(); floaters = new Floaters();
+  view.scene.add(dungeon.root, actors.root, pickups.root, effects.root); view.snap(world.state.player);
   actors.update(world.state, 1, 0, null); pickups.update(world.state, 0);
 }
 function reenter(): void {
   profile = profileFromRun(world.state, profile); saveProfile(profile);
   input.clear(); dungeon.dispose(); actors.dispose(); pickups.dispose();
+  effects.dispose(); floaters.dispose(); audio.silence();
   world = newRun(); stepper.reset(); eventQueue.length = 0; frameEvents = []; mountRun(); renderInventory();
 }
 function autosave(): void { saveProfile(profileFromRun(world.state, { ...profile, runCount: profile.runCount - 1 })); }
@@ -98,13 +106,18 @@ function frame(now: number): void {
     step(world, tickInput); perf.tick(performance.now() - start);
     eventQueue.push(...world.state.events);
   });
-  frameEvents = eventQueue.splice(0); actors.events(frameEvents);
+  const spare = frameEvents; frameEvents = eventQueue; eventQueue = spare; eventQueue.length = 0;
+  actors.events(frameEvents, world.state); effects.events(frameEvents, world.state);
+  floaters.events(frameEvents, world.state); audio.events(frameEvents);
   const dt = Math.min(delta / 1000, 0.1);
   actors.update(world.state, alpha, dt, input.aim.enemy);
+  effects.update(world.state, dt, now / 1000);
   const position = actors.player.root.position;
   view.follow(position, dt, now / 1000); dungeon.update(position, view.camera, now / 1000);
-  pickups.update(world.state, now / 1000); input.updateAim(); view.render();
-  if (delta > 0) perf.frame(delta, view.renderer.info.render.calls);
+  if (params.get('shake') !== '0') view.shake(effects.shake, now / 1000);
+  pickups.update(world.state, now / 1000); input.updateAim();
+  floaters.update(view.camera, dt, effects.hurt, canvas.clientWidth, canvas.clientHeight); view.render();
+  if (delta > 0) perf.frame(delta, view.renderer.info.render.calls, view.renderCpuMs);
   if (now - savedAt > 10000) { savedAt = now; autosave(); }
   if (now - hudAt > 150) {
     hudAt = now; const { player: p, kills, status } = world.state;
@@ -112,7 +125,7 @@ function frame(now: number): void {
       + (status === 'dead' ? '\n쓰러졌습니다 · R 재진입' : world.state.portal ? '\n푸른 문을 통해 귀환할 수 있습니다' : '');
     if (!perfText.hidden) {
       const sample = perf.snapshot();
-      perfText.textContent = `frame p95 ${sample.frameP95.toFixed(1)} ms · sim p95 ${sample.simP95.toFixed(2)} ms\ndraw ${sample.drawCalls} · mobs ${world.state.enemies.length} · bloom ${view.bloom ? 'on' : 'off'}`;
+      perfText.textContent = `frame p95 ${sample.frameP95.toFixed(1)} ms · sim p95 ${sample.simP95.toFixed(2)} ms\nrender CPU p95 ${sample.renderCpuP95.toFixed(2)} ms · draw ${sample.drawCalls}\nmobs ${world.state.enemies.length} · FX ${effects.active}/64 · numbers ${floaters.active}/40 · bloom ${view.bloom ? 'on' : 'off'}`;
     }
   }
   if (!inv.hidden && now - inventoryAt > 500) { inventoryAt = now; renderInventory(); }
@@ -129,6 +142,7 @@ Object.assign(window, { yeonmu: {
   get events() { return frameEvents; }, get aim() { return input.aim; },
   get perf() { return perf.snapshot(); }, get bloom() { return view.bloom; },
   get renderer() { return view.renderer; }, get camera() { return view.camera; },
+  get effects() { return effects.stats; }, get floaters() { return floaters.stats; }, get audio() { return audio.stats; },
   project: (x: number, z: number, y = 0) => view.project({ x, z }, y),
   resetPerf: () => perf.reset(),
 } });
