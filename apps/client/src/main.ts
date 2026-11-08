@@ -1,151 +1,134 @@
-// 임시 2D 디버그 화면 — sim 규칙을 눈으로 확인하기 위한 것. 정식 three.js 화면으로 교체 예정.
-import './style.css';
+﻿import './style.css';
 import {
-  EMPTY_INPUT, FixedStepper, SKILLS, affixText, createRun, makeWorld, parseProfile, profileFromRun,
-  serializeProfile, starterProfile, step, xpToNext,
+  FixedStepper, affixText, createRun, makeWorld, parseProfile, profileFromRun,
+  serializeProfile, starterProfile, step,
 } from '@yeonmu/sim';
-import type { Command, HotSlot, Profile, TickInput, Vec, World } from '@yeonmu/sim';
+import type { Profile, SimEvent, World } from '@yeonmu/sim';
+import { GameScene } from './render/scene';
+import { DungeonMesh } from './render/dungeon-mesh';
+import { Actors } from './render/actors';
+import { Pickups } from './render/pickups';
+import { InputController } from './input';
+import { PerformanceMeter } from './perf';
 
 const SAVE_KEY = 'yeonmu.save.v1';
-const SCALE = 22;
+const params = new URLSearchParams(location.search);
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
-const ctx = canvas.getContext('2d')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
 const inv = document.querySelector<HTMLDivElement>('#inv')!;
+const perfText = document.createElement('div'); perfText.id = 'perf';
+perfText.hidden = !params.has('perf'); document.body.append(perfText);
 
 function loadProfile(): Profile {
   try {
     const text = localStorage.getItem(SAVE_KEY);
     if (!text) return starterProfile();
-    const profile = parseProfile(text);
-    if (profile) return profile;
-    localStorage.setItem(`${SAVE_KEY}.broken`, text); // 손상 원본은 지우지 않고 남긴다.
-  } catch { /* 저장소 차단 환경에서도 플레이는 되게 한다 */ }
+    const saved = parseProfile(text);
+    if (saved) return saved;
+    localStorage.setItem(`${SAVE_KEY}.broken`, text);
+  } catch { /* Storage denial must not prevent playing. */ }
   return starterProfile();
 }
-function saveProfile(profile: Profile): void {
-  try { localStorage.setItem(SAVE_KEY, serializeProfile(profile)); } catch { /* 무시 */ }
+function saveProfile(saved: Profile): void {
+  try { localStorage.setItem(SAVE_KEY, serializeProfile(saved)); } catch { /* Optional offline persistence. */ }
 }
 
 let profile = loadProfile();
 let world: World = newRun();
+const view = new GameScene(canvas, params.get('bloom') !== '0');
 const stepper = new FixedStepper();
-const mouse = { x: 0, y: 0, left: false };
-const keys = new Set<string>();
-let pending: Command[] = [];
-let castQueue: TickInput['cast'] = null;
+const perf = new PerformanceMeter();
+let dungeon: DungeonMesh;
+let actors: Actors;
+let pickups: Pickups;
+// Every tick contributes, even when a render frame advances several sim ticks.
+// Effects in slice ② can consume this same frame batch after Actors.events().
+const eventQueue: SimEvent[] = [];
+let frameEvents: readonly SimEvent[] = [];
+mountRun();
+const input = new InputController(view, () => world, () => actors, () => pickups,
+  () => { inv.hidden = !inv.hidden; renderInventory(); }, reenter);
 
 function newRun(): World {
-  const extra = Number(new URLSearchParams(location.search).get('mobs') ?? 0);
-  const { state, dungeon } = createRun(profile, (Date.now() & 0x7fffffff) ^ profile.runCount, { extraMobs: extra });
-  return makeWorld(state, dungeon);
+  const requested = Number(params.get('mobs'));
+  const mobs = params.has('mobs') && Number.isFinite(requested) ? Math.max(1, Math.min(400, Math.floor(requested))) : undefined;
+  const seedParam = Number(params.get('seed'));
+  const seed = params.has('seed') && Number.isFinite(seedParam) ? seedParam | 0 : (Date.now() & 0x7fffffff) ^ profile.runCount;
+  const run = createRun(profile, seed, mobs === undefined ? {} : { totalMobs: mobs });
+  return makeWorld(run.state, run.dungeon);
 }
-function toWorld(sx: number, sy: number): Vec {
-  const p = world.state.player;
-  return { x: p.x + (sx - canvas.width / 2) / SCALE, z: p.z + (sy - canvas.height / 2) / SCALE };
+function mountRun(): void {
+  dungeon = new DungeonMesh(world.dungeon); actors = new Actors(world.state); pickups = new Pickups();
+  view.scene.add(dungeon.root, actors.root, pickups.root); view.snap(world.state.player);
+  actors.update(world.state, 1, 0, null); pickups.update(world.state, 0);
 }
-function nearest<T extends Vec>(list: readonly T[], at: Vec, range: number): T | null {
-  let best: T | null = null; let bestD = range;
-  for (const item of list) { const d = Math.hypot(item.x - at.x, item.z - at.z); if (d < bestD) { best = item; bestD = d; } }
-  return best;
-}
-
-function buildInput(): TickInput {
-  const at = toWorld(mouse.x, mouse.y);
-  const input: TickInput = { ...EMPTY_INPUT, commands: pending, cast: castQueue, standStill: keys.has('Shift') };
-  pending = []; castQueue = null;
-  if (mouse.left) {
-    const enemy = nearest(world.state.enemies, at, 1);
-    const item = nearest(world.state.items, at, 0.8);
-    if (enemy) input.attack = enemy.id; else if (item) input.pickup = item.id; else input.moveTo = at;
-  }
-  const slots: [string, HotSlot][] = [['1', 's1'], ['2', 's2'], ['3', 's3'], ['4', 's4']];
-  for (const [key, slot] of slots) if (keys.has(key)) input.cast = { slot, at };
-  return input;
-}
-
-canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-canvas.addEventListener('mousedown', e => {
-  if (e.button === 0) mouse.left = true;
-  if (e.button === 2) castQueue = { slot: 'rmb', at: toWorld(e.clientX, e.clientY) };
-  if (world.state.portal && e.button === 0 && Math.hypot(toWorld(e.clientX, e.clientY).x - world.state.portal.x, toWorld(e.clientX, e.clientY).z - world.state.portal.z) < 1.5) reenter();
-});
-window.addEventListener('mouseup', e => { if (e.button === 0) mouse.left = false; });
-canvas.addEventListener('contextmenu', e => e.preventDefault());
-window.addEventListener('keydown', e => {
-  keys.add(e.key);
-  if (e.key === 'i' || e.key === 'I') { inv.hidden = !inv.hidden; renderInventory(); }
-  if (e.key === 'r' && world.state.status === 'dead') reenter();
-});
-window.addEventListener('keyup', e => keys.delete(e.key));
-window.addEventListener('blur', () => { keys.clear(); mouse.left = false; });
-
 function reenter(): void {
   profile = profileFromRun(world.state, profile); saveProfile(profile);
-  world = newRun(); stepper.reset();
+  input.clear(); dungeon.dispose(); actors.dispose(); pickups.dispose();
+  world = newRun(); stepper.reset(); eventQueue.length = 0; frameEvents = []; mountRun(); renderInventory();
 }
+function autosave(): void { saveProfile(profileFromRun(world.state, { ...profile, runCount: profile.runCount - 1 })); }
 
 function renderInventory(): void {
   if (inv.hidden) return;
-  const p = world.state.player;
-  inv.innerHTML = '<b>착용</b>' + Object.entries(p.equipped).map(([slot, item]) => `<div class="${item?.rarity ?? ''}">${slot}: ${item ? item.name : '-'}</div>`).join('')
-    + `<br><b>가방 ${p.inventory.length}/30</b> (클릭 = 장착)`;
-  for (const item of p.inventory) {
-    const button = document.createElement('button');
-    button.className = item.rarity;
-    button.textContent = `${item.name} [${item.slot}] ${item.slot === 'weapon' ? `피해 ${item.base}` : `체력 ${item.base}`}`;
+  inv.replaceChildren();
+  const title = document.createElement('b'); title.textContent = '장착'; inv.append(title);
+  for (const [slot, item] of Object.entries(world.state.player.equipped)) {
+    const row = document.createElement('div'); row.className = item?.rarity ?? ''; row.textContent = `${slot}: ${item?.name ?? '-'}`; inv.append(row);
+  }
+  const heading = document.createElement('p'); heading.textContent = `가방 ${world.state.player.inventory.length}/30 · 클릭하여 장착`; inv.append(heading);
+  for (const item of world.state.player.inventory) {
+    const button = document.createElement('button'); button.className = item.rarity;
+    button.textContent = `${item.name} [${item.slot}] ${item.slot === 'weapon' ? '피해' : '체력'} ${item.base}`;
     button.title = item.affixes.map(affixText).join('\n') + (item.legendary ? '\n★ 전설 효과' : '');
-    button.onclick = () => { pending.push({ type: 'equip', item: item.id }); setTimeout(renderInventory, 60); };
-    inv.append(button);
+    button.onclick = () => input.command({ type: 'equip', item: item.id }); inv.append(button);
   }
 }
 
-const RARITY_COLOR = { common: '#e6e6e6', magic: '#7fa8ff', rare: '#ffe066', legendary: '#ff9a3c' };
-function draw(): void {
-  canvas.width = innerWidth; canvas.height = innerHeight;
-  const { state, dungeon } = world; const p = state.player;
-  const sx = (x: number): number => (x - p.x) * SCALE + canvas.width / 2;
-  const sy = (z: number): number => (z - p.z) * SCALE + canvas.height / 2;
-  ctx.fillStyle = '#0b1113'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#2a3639';
-  for (let z = 0; z < dungeon.height; z++) for (let x = 0; x < dungeon.width; x++) if (dungeon.floor[z * dungeon.width + x]) ctx.fillRect(sx(x), sy(z), SCALE + 0.5, SCALE + 0.5);
-  for (const fire of state.fires) circle(sx(fire.x), sy(fire.z), fire.radius * SCALE, '#ff6a2a55');
-  for (const e of state.enemies) if (e.mode === 'windup' && (e.attack === 'sweep' || e.attack === 'slam'))
-    circle(sx(e.attackTarget.x), sy(e.attackTarget.z), (e.attack === 'sweep' ? 5 : 2.5) * SCALE, '#ff404044');
-  for (const g of state.globes) circle(sx(g.x), sy(g.z), 5, '#e0303a');
-  for (const g of state.items) { ctx.fillStyle = RARITY_COLOR[g.item.rarity]; ctx.fillRect(sx(g.x) - 4, sy(g.z) - 4, 8, 8); }
-  for (const e of state.enemies) {
-    const color = e.flashUntil > state.tick ? '#fff' : e.boss ? '#c0503a' : e.elite ? '#c9a2ff' : { reed: '#8a9a5b', shield: '#6f8790', porter: '#9a7aa0', hat: '#c0503a' }[e.kind];
-    circle(sx(e.x), sy(e.z), e.radius * SCALE, e.mode === 'sleep' ? '#555' : color);
-    if (e.boss || e.elite) { ctx.fillStyle = '#fff'; ctx.fillText(`${e.elite ?? '보스'} ${e.hp}/${e.maxHp}`, sx(e.x) - 20, sy(e.z) - e.radius * SCALE - 4); }
-  }
-  for (const shot of state.projectiles) circle(sx(shot.x), sy(shot.z), 3, '#d4b26a');
-  if (state.portal) circle(sx(state.portal.x), sy(state.portal.z), 1.2 * SCALE, '#5fd4ff88');
-  circle(sx(p.x), sy(p.z), 0.4 * SCALE, p.wardUntil > state.tick ? '#ffd76a' : '#e6e0c9');
-  const slots = (['rmb', 's1', 's2', 's3', 's4'] as const).map(slot => {
-    const id = p.slots[slot]; if (!id) return `${slot}:-`;
-    const cd = Math.max(0, p.cooldowns[id] - state.tick);
-    return `${slot}:${SKILLS[id].name}${cd ? `(${(cd / 30).toFixed(1)})` : ''}`;
-  }).join('  ');
-  hud.textContent = `Lv ${p.level}  경험치 ${Math.round(p.xp)}/${xpToNext(p.level)}  체력 ${p.hp}/${p.stats.maxHp}  기 ${Math.round(p.spirit)}\n${slots}\n처치 ${state.kills}  남은 적 ${state.enemies.length}  던전 Lv ${state.dungeonLevel}`
-    + `\n좌클릭 이동·공격·줍기 / 우클릭·1~4 스킬 / Shift 제자리 / I 가방`
-    + (state.portal ? '\n보스 처치! 파란 문 클릭 = 재진입' : '') + (state.status === 'dead' ? '\n쓰러짐 — R 키로 재진입(장비·레벨 유지)' : '');
-}
-function circle(x: number, y: number, r: number, color: string): void {
-  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-}
-
-let last = performance.now();
-let autosave = 0;
+let last = performance.now(); let savedAt = last; let hudAt = 0; let inventoryAt = 0;
+let wasHidden = false;
 function frame(now: number): void {
-  stepper.advance(now - last, () => step(world, buildInput()));
-  last = now;
-  // 판 도중 종료해도 성장분이 남게 10초마다 저장한다(재진입 횟수는 올리지 않음).
-  if (now - autosave > 10000) { autosave = now; saveProfile(profileFromRun(world.state, { ...profile, runCount: profile.runCount - 1 })); }
-  draw();
-  requestAnimationFrame(frame);
+  const elapsed = now - last; last = now;
+  if (document.hidden) { wasHidden = true; requestAnimationFrame(frame); return; }
+  const delta = wasHidden ? 0 : elapsed;
+  if (wasHidden) { stepper.reset(); actors.capture(world.state); wasHidden = false; }
+  const alpha = stepper.advance(delta, () => {
+    actors.capture(world.state);
+    const tickInput = input.build(); const start = performance.now();
+    step(world, tickInput); perf.tick(performance.now() - start);
+    eventQueue.push(...world.state.events);
+  });
+  frameEvents = eventQueue.splice(0); actors.events(frameEvents);
+  const dt = Math.min(delta / 1000, 0.1);
+  actors.update(world.state, alpha, dt, input.aim.enemy);
+  const position = actors.player.root.position;
+  view.follow(position, dt, now / 1000); dungeon.update(position, view.camera, now / 1000);
+  pickups.update(world.state, now / 1000); input.updateAim(); view.render();
+  if (delta > 0) perf.frame(delta, view.renderer.info.render.calls);
+  if (now - savedAt > 10000) { savedAt = now; autosave(); }
+  if (now - hudAt > 150) {
+    hudAt = now; const { player: p, kills, status } = world.state;
+    hud.textContent = `연무  /  Lv ${p.level}   체력 ${Math.ceil(p.hp)} / ${p.stats.maxHp}   기 ${Math.floor(p.spirit)}   처치 ${kills}`
+      + (status === 'dead' ? '\n쓰러졌습니다 · R 재진입' : world.state.portal ? '\n푸른 문을 통해 귀환할 수 있습니다' : '');
+    if (!perfText.hidden) {
+      const sample = perf.snapshot();
+      perfText.textContent = `frame p95 ${sample.frameP95.toFixed(1)} ms · sim p95 ${sample.simP95.toFixed(2)} ms\ndraw ${sample.drawCalls} · mobs ${world.state.enemies.length} · bloom ${view.bloom ? 'on' : 'off'}`;
+    }
+  }
+  if (!inv.hidden && now - inventoryAt > 500) { inventoryAt = now; renderInventory(); }
+  input.afterFrame(); requestAnimationFrame(frame);
 }
+window.addEventListener('pagehide', autosave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) autosave(); });
 requestAnimationFrame(frame);
 
-// 자동 점검(브라우저 스모크)이 상태를 읽을 수 있게 노출한다. 쓰기 용도로 쓰지 않는다.
-(window as unknown as { yeonmu: { readonly world: World; readonly scale: number } }).yeonmu = { get world() { return world; }, scale: SCALE };
+// Read-only getters preserve the existing browser inspection handle.
+// project() enables input tests using the same moving camera as the player sees.
+Object.assign(window, { yeonmu: {
+  get world() { return world; }, get scale() { return canvas.clientHeight / 17; },
+  get events() { return frameEvents; }, get aim() { return input.aim; },
+  get perf() { return perf.snapshot(); }, get bloom() { return view.bloom; },
+  get renderer() { return view.renderer; }, get camera() { return view.camera; },
+  project: (x: number, z: number, y = 0) => view.project({ x, z }, y),
+  resetPerf: () => perf.reset(),
+} });
