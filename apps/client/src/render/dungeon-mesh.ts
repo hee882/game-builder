@@ -9,7 +9,7 @@ function noise(seed: number, x: number, z: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function stoneTexture(): THREE.CanvasTexture {
+function stoneTexture(wall = false): THREE.CanvasTexture {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
   const c = canvas.getContext('2d')!;
   c.fillStyle = '#a2aaa7'; c.fillRect(0, 0, 128, 128);
@@ -22,6 +22,15 @@ function stoneTexture(): THREE.CanvasTexture {
   c.strokeStyle = '#444b4750'; c.beginPath();
   c.moveTo(0, 32); c.lineTo(22, 40); c.lineTo(29, 59); c.lineTo(36, 62);
   c.moveTo(29, 59); c.lineTo(15, 74); c.moveTo(128, 104); c.lineTo(100, 93); c.lineTo(95, 81); c.stroke();
+  if (wall) {
+    c.strokeStyle = '#242e2ac0'; c.lineWidth = 3;
+    for (let row = 0; row < 4; row++) {
+      c.beginPath(); c.moveTo(0, row * 32); c.lineTo(128, row * 32); c.stroke();
+      for (let x = row % 2 ? 32 : 0; x < 128; x += 64) {
+        c.beginPath(); c.moveTo(x, row * 32); c.lineTo(x, row * 32 + 32); c.stroke();
+      }
+    }
+  }
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4; return texture;
 }
@@ -55,7 +64,7 @@ export class DungeonMesh {
     floor.receiveShadow = true; this.root.add(floor);
     this.dummy.rotation.set(0, 0, 0);
     this.walls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({ map: texture, roughness: 0.95, color: 0x657473 }), this.wallPositions.length);
+      new THREE.MeshStandardMaterial({ map: stoneTexture(true), roughness: 0.95, color: 0x657473 }), this.wallPositions.length);
     this.walls.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.wallPositions.forEach((p, i) => {
       this.wallMatrix(i, p.height);

@@ -32,6 +32,7 @@ export class InputController {
       if (this.left && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 6) this.dragging = true;
     }, options);
     canvas.addEventListener('pointerdown', e => {
+      if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
       this.point(e.clientX, e.clientY); this.updateAim();
       if (e.button === 0) {
         this.left = true; this.clicked = { ...this.aim }; this.dragging = false;
