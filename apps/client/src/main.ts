@@ -1,6 +1,13 @@
-﻿import './style.css';
+import './style.css';
+import './ui/ui.css';
+import { Hud } from './ui/hud';
+import { Inventory } from './ui/inventory';
+import { Skills } from './ui/skills';
+import { Nameplates } from './ui/nameplates';
+import { Screens } from './ui/screens';
+import type { UiActions } from './ui/common';
 import {
-  FixedStepper, affixText, createRun, makeWorld, parseProfile, profileFromRun,
+  FixedStepper, createRun, makeWorld, parseProfile, profileFromRun,
   serializeProfile, starterProfile, step,
 } from '@yeonmu/sim';
 import type { Profile, SimEvent, World } from '@yeonmu/sim';
@@ -17,8 +24,6 @@ import { CombatAudio } from './audio';
 const SAVE_KEY = 'yeonmu.save.v1';
 const params = new URLSearchParams(location.search);
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
-const hud = document.querySelector<HTMLDivElement>('#hud')!;
-const inv = document.querySelector<HTMLDivElement>('#inv')!;
 const perfText = document.createElement('div'); perfText.id = 'perf';
 perfText.hidden = !params.has('perf'); document.body.append(perfText);
 
@@ -53,7 +58,24 @@ let eventQueue: SimEvent[] = [];
 let frameEvents: SimEvent[] = [];
 mountRun();
 const input = new InputController(view, () => world, () => actors, () => pickups,
-  () => { inv.hidden = !inv.hidden; renderInventory(); }, reenter);
+  () => inventory.toggle(), reenter);
+const actions: UiActions = {
+  command: command => input.command(command), cast: slot => input.cast(slot), pickup: id => input.pickup(id),
+  inventory: () => inventory.toggle(), skills: () => skills.toggle(), reenter,
+};
+const hud = new Hud(actions);
+const inventory = new Inventory(actions, text => hud.notify(text));
+const skills = new Skills(actions);
+const nameplates = new Nameplates((at, y) => view.project(at, y), actions.pickup);
+const screens = new Screens(reenter);
+window.addEventListener('keydown', event => {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  if (!event.repeat && event.key.toLowerCase() === 'k') skills.toggle();
+  if (event.key === 'Escape') {
+    if (!inventory.root.hidden) inventory.toggle();
+    if (!skills.root.hidden) skills.toggle();
+  }
+});
 
 function newRun(): World {
   const requested = Number(params.get('mobs'));
@@ -70,30 +92,15 @@ function mountRun(): void {
   actors.update(world.state, 1, 0, null); pickups.update(world.state, 0);
 }
 function reenter(): void {
+  screens.leave(world.state);
   profile = profileFromRun(world.state, profile); saveProfile(profile);
   input.clear(); dungeon.dispose(); actors.dispose(); pickups.dispose();
   effects.dispose(); floaters.dispose(); audio.silence();
-  world = newRun(); stepper.reset(); eventQueue.length = 0; frameEvents = []; mountRun(); renderInventory();
+  world = newRun(); stepper.reset(); eventQueue.length = 0; frameEvents = []; mountRun();
 }
 function autosave(): void { saveProfile(profileFromRun(world.state, { ...profile, runCount: profile.runCount - 1 })); }
 
-function renderInventory(): void {
-  if (inv.hidden) return;
-  inv.replaceChildren();
-  const title = document.createElement('b'); title.textContent = '장착'; inv.append(title);
-  for (const [slot, item] of Object.entries(world.state.player.equipped)) {
-    const row = document.createElement('div'); row.className = item?.rarity ?? ''; row.textContent = `${slot}: ${item?.name ?? '-'}`; inv.append(row);
-  }
-  const heading = document.createElement('p'); heading.textContent = `가방 ${world.state.player.inventory.length}/30 · 클릭하여 장착`; inv.append(heading);
-  for (const item of world.state.player.inventory) {
-    const button = document.createElement('button'); button.className = item.rarity;
-    button.textContent = `${item.name} [${item.slot}] ${item.slot === 'weapon' ? '피해' : '체력'} ${item.base}`;
-    button.title = item.affixes.map(affixText).join('\n') + (item.legendary ? '\n★ 전설 효과' : '');
-    button.onclick = () => input.command({ type: 'equip', item: item.id }); inv.append(button);
-  }
-}
-
-let last = performance.now(); let savedAt = last; let hudAt = 0; let inventoryAt = 0;
+let last = performance.now(); let savedAt = last; let hudAt = 0;
 let wasHidden = false;
 function frame(now: number): void {
   const elapsed = now - last; last = now;
@@ -109,6 +116,7 @@ function frame(now: number): void {
   const spare = frameEvents; frameEvents = eventQueue; eventQueue = spare; eventQueue.length = 0;
   actors.events(frameEvents, world.state); effects.events(frameEvents, world.state);
   floaters.events(frameEvents, world.state); audio.events(frameEvents);
+  hud.events(frameEvents); screens.events(frameEvents);
   const dt = Math.min(delta / 1000, 0.1);
   actors.update(world.state, alpha, dt, input.aim.enemy);
   effects.update(world.state, dt, now / 1000);
@@ -119,16 +127,16 @@ function frame(now: number): void {
   floaters.update(view.camera, dt, effects.hurt, canvas.clientWidth, canvas.clientHeight); view.render();
   if (delta > 0) perf.frame(delta, view.renderer.info.render.calls, view.renderCpuMs);
   if (now - savedAt > 10000) { savedAt = now; autosave(); }
-  if (now - hudAt > 150) {
-    hudAt = now; const { player: p, kills, status } = world.state;
-    hud.textContent = `연무  /  Lv ${p.level}   체력 ${Math.ceil(p.hp)} / ${p.stats.maxHp}   기 ${Math.floor(p.spirit)}   처치 ${kills}`
-      + (status === 'dead' ? '\n쓰러졌습니다 · R 재진입' : world.state.portal ? '\n푸른 문을 통해 귀환할 수 있습니다' : '');
+  nameplates.position(world.state);
+  if (now - hudAt > 100) {
+    hudAt = now;
+    hud.update(world.state, now); inventory.update(world.state.player); skills.update(world.state.player);
+    nameplates.update(world.state, input.aim.enemy); screens.update(world.state, now);
     if (!perfText.hidden) {
       const sample = perf.snapshot();
       perfText.textContent = `frame p95 ${sample.frameP95.toFixed(1)} ms · sim p95 ${sample.simP95.toFixed(2)} ms\nrender CPU p95 ${sample.renderCpuP95.toFixed(2)} ms · draw ${sample.drawCalls}\nmobs ${world.state.enemies.length} · FX ${effects.active}/64 · numbers ${floaters.active}/40 · bloom ${view.bloom ? 'on' : 'off'}`;
     }
   }
-  if (!inv.hidden && now - inventoryAt > 500) { inventoryAt = now; renderInventory(); }
   input.afterFrame(); requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide', autosave);
