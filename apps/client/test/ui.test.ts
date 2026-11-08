@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Item } from '../../../packages/sim/src/types';
 import { compareItems } from '../src/ui/inventory';
 const item = (partial: Partial<Item>): Item => ({ id: 1, slot: 'weapon', name: '검증 환도', rarity: 'common', ilvl: 1, base: 10, affixes: [], legendary: null, ...partial });

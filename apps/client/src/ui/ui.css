@@ -1,4 +1,4 @@
-﻿:root{--ui-scale:1;--panel:#10191ef2;--gold:#ab956b;--muted:#a2aaa7}
+:root{--ui-scale:1;--panel:#10191ef2;--gold:#ab956b;--muted:#a2aaa7}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit;cursor:pointer;min-height:44px;min-width:44px;background:#1b292d;border:1px solid #56605b;border-radius:3px;touch-action:manipulation}
 button:focus-visible{outline:2px solid #eed393;outline-offset:2px}button:hover{border-color:#e0c38d}button:disabled{cursor:default;opacity:.4}
@@ -16,3 +16,9 @@ button:focus-visible{outline:2px solid #eed393;outline-offset:2px}button:hover{b
 #perf{z-index:21}
 @media(max-width:900px){:root{--ui-scale:.8}.item-tooltip{right:300px;width:240px}#perf{top:100px;bottom:auto}}
 @media(max-width:620px){:root{--ui-scale:.65}.ui-panel{max-height:110vh}.item-tooltip{right:16px;top:auto;bottom:140px;max-height:40vh;transform-origin:bottom right}.dungeon-info{top:10px;left:10px}.ui-toast{width:80%;top:12%}}
+
+/* Keep physical pointer targets at least 44px even when scaling the UI down. */
+:root{--hit:calc(44px / var(--ui-scale))}
+.game-hud button,.ui-panel button,.item-tooltip button{min-width:var(--hit);min-height:var(--hit)}
+.ui-panel{width:max(350px,calc(284px / var(--ui-scale)))}
+#skills{width:max(390px,calc(300px / var(--ui-scale)))}

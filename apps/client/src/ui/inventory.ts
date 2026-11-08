@@ -1,4 +1,4 @@
-﻿import { AFFIXES, EQUIP_SLOTS, INVENTORY_SIZE, LEGENDARIES, SLOT_NAMES, affixText } from '@yeonmu/sim';
+import { AFFIXES, EQUIP_SLOTS, INVENTORY_SIZE, LEGENDARIES, SLOT_NAMES, affixText } from '@yeonmu/sim';
 import type { EquipSlot, Item, Player, StatKey } from '@yeonmu/sim';
 import { button, node, panel } from './common';
 import type { UiActions } from './common';
@@ -10,7 +10,7 @@ export function compareItems(item: Item, equipped: Item | null): Difference[] {
   const values = new Map<StatKey, number>();
   for (const affix of item.affixes) values.set(affix.stat, (values.get(affix.stat) ?? 0) + affix.value);
   for (const affix of equipped?.affixes ?? []) values.set(affix.stat, (values.get(affix.stat) ?? 0) - affix.value);
-  for (const [stat, value] of values) rows.push({ label: AFFIXES[stat].label.replace(/[+-]\{v\}/, '').trim(), value });
+  for (const [stat, value] of values) rows.push({ label: stat === 'cooldownPct' ? '재사용 대기시간 %' : AFFIXES[stat].label.replace(/[+-]\{v\}/, '').trim(), value });
   return rows.filter(row => row.value !== 0);
 }
 export class Inventory {
@@ -78,7 +78,7 @@ export class Inventory {
     root.addEventListener('pointercancel', cancel);
     root.addEventListener('pointerup', e => {
       cancel(); if (e.button !== 0 || held) return; e.preventDefault();
-      if (e.pointerType === 'touch' && this.hovered?.id !== item.id) { this.hovered = { id: item.id, slot, touch: true }; this.describe(item, slot); }
+      if (e.pointerType === 'touch' && (this.hovered?.id !== item.id || !this.hovered.touch)) { this.hovered = { id: item.id, slot, touch: true }; this.describe(item, slot); }
       else this.equip(item, slot);
     });
     root.addEventListener('focus', () => { this.hovered = { id: item.id, slot, touch: false }; this.describe(item, slot); });
