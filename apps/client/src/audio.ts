@@ -40,7 +40,7 @@ export class CombatAudio {
     if (!this.context) {
       try {
         this.context = new AudioContext();
-        const master = this.context.createGain(); master.gain.value = .5; master.connect(this.context.destination);
+        const master = this.context.createGain(); master.gain.value = 1.6; // 합성음 기본 음량이 너무 작아 들리지 않던 문제 master.connect(this.context.destination);
         for (let i = 0; i < 8; i++) {
           const oscillator = this.context.createOscillator(); const gain = this.context.createGain();
           gain.gain.value = 0; oscillator.connect(gain); gain.connect(master); oscillator.start();

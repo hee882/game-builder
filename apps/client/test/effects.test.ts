@@ -20,7 +20,7 @@ describe('bounded render effects (no simulation writes)', () => {
   });
   it('caps simultaneous death smoke and clears state effects immediately on expiry', () => {
     const { state } = createRun(starterProfile(), 1); const fx = new Effects();
-    fx.events(Array.from({ length: 100 }, (_, i) => ({ type: 'kill', enemy: i, kind: 'reed', elite: false, boss: false, x: 0, z: 0 })), state);
+    fx.events(Array.from({ length: 100 }, (_, i) => ({ type: 'kill', enemy: i, kind: 'reed', elite: false, boss: false, x: 0, z: 0, kx: 0, kz: 0 })), state);
     expect(fx.active).toBe(DEATH_BUDGET);
     fx.update(state, 1, 1);
     state.player.wardUntil = state.tick + 150;

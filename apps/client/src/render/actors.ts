@@ -8,7 +8,7 @@ import { disposeGroup } from './scene';
 const COLORS = { reed: 0x879577, shield: 0x6f8e9d, porter: 0x997fa6, hat: 0xa74434 };
 type Pose = Vec & { facing: number };
 interface Batch { mesh: THREE.InstancedMesh; ids: number[] }
-interface Corpse { mesh: THREE.Mesh; age: number; facing: number; size: number }
+interface Corpse { mesh: THREE.Mesh; age: number; facing: number; size: number; vx: number; vy: number; vz: number; spin: number }
 interface Recoil { id: number; x: number; z: number; age: number }
 
 function enemyGeometry(kind: EnemyKind): THREE.BufferGeometry {
@@ -70,7 +70,7 @@ export class Actors {
     // Bounded reusable pool. Geometry is borrowed from the live batches.
     for (let i = 0; i < 32; i++) {
       const mesh = new THREE.Mesh(this.boss.geometry, material.clone()); mesh.visible = false;
-      this.root.add(mesh); this.corpses.push({ mesh, age: 1, facing: 0, size: 1 });
+      this.root.add(mesh); this.corpses.push({ mesh, age: 1, facing: 0, size: 1, vx: 0, vy: 0, vz: 0, spin: 0 });
     }
     this.hover = new THREE.Mesh(new THREE.RingGeometry(0.65, 0.71, 32), new THREE.MeshBasicMaterial({ color: 0xffba75, transparent: true, opacity: 0.9, depthWrite: false }));
     this.hover.rotation.x = -Math.PI / 2; this.hover.visible = false; this.root.add(this.hover);
@@ -98,6 +98,12 @@ export class Actors {
       corpse.mesh.position.set(event.x, 0, event.z); corpse.mesh.visible = true;
       corpse.facing = this.previous.get(event.enemy)?.facing ?? 0;
       corpse.size = event.boss ? 1.6 : event.elite ? 1.3 : 1; corpse.age = 0;
+      // 처치한 타격의 넉백 방향·세기로 날려 보낸다(없으면 주인공 반대쪽으로 약하게).
+      let dx = event.kx; let dz = event.kz; const force = Math.hypot(dx, dz) * 30;
+      if (force < 0.01) { dx = event.x - state.player.x; dz = event.z - state.player.z; }
+      const length = Math.hypot(dx, dz) || 1; const speed = event.boss ? 0 : (2.5 + force * 1.6) / (event.elite ? 1.6 : 1);
+      corpse.vx = dx / length * speed; corpse.vz = dz / length * speed; corpse.vy = event.boss ? 0 : 2 + speed * 0.35;
+      corpse.spin = event.boss ? 0 : (event.enemy % 2 ? 1 : -1) * (4 + speed);
     }
   }
 
@@ -135,7 +141,13 @@ export class Actors {
     }
     for (const corpse of this.corpses) if (corpse.mesh.visible) {
       corpse.age += dt; const t = Math.min(1, corpse.age / 0.65);
-      corpse.mesh.rotation.set(t * Math.PI / 2, corpse.facing, t * 0.2);
+      const air = corpse.mesh.position.y > 0 || corpse.vy > 0;
+      if (air) {
+        corpse.mesh.position.x += corpse.vx * dt; corpse.mesh.position.z += corpse.vz * dt;
+        corpse.vy -= 22 * dt; corpse.mesh.position.y = Math.max(0, corpse.mesh.position.y + corpse.vy * dt);
+        if (corpse.mesh.position.y === 0) { corpse.vy = 0; corpse.vx *= 0.3; corpse.vz *= 0.3; }
+      }
+      corpse.mesh.rotation.set(t * Math.PI / 2, corpse.facing + corpse.spin * Math.min(corpse.age, 0.5), t * 0.2);
       corpse.mesh.scale.setScalar(corpse.size * (1 - Math.max(0, t - 0.65) / 0.35));
       if (t >= 1) corpse.mesh.visible = false;
     }
